@@ -17,6 +17,11 @@ def terms():
     return render_template("terms.html")
 
 
+@app.route("/privacy", methods=["GET"])
+def privacy():
+    return render_template("privacy.html")
+
+
 @app.route("/register")
 def register():
     return render_template("register.html")
