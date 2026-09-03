@@ -12,6 +12,11 @@ def landing():
     return render_template("landing.html")
 
 
+@app.route("/terms", methods=["GET"])
+def terms():
+    return render_template("terms.html")
+
+
 @app.route("/register")
 def register():
     return render_template("register.html")
