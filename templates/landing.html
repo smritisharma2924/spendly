@@ -20,7 +20,13 @@
         </p>
         <div class="hero-actions">
             <a href="{{ url_for('register') }}" class="hero-button">Create free account</a>
-            <a href="#how-it-works" class="hero-button">See how it works</a>
+            <button
+                type="button"
+                class="hero-button"
+                id="video-modal-trigger"
+                aria-haspopup="dialog"
+                aria-controls="video-modal"
+            >See how it works</button>
         </div>
     </div>
     <div class="hero-visual" id="how-it-works" role="img" aria-label="Example Spendly monthly expense dashboard">
@@ -68,6 +74,22 @@
                         <div class="mock-bar mock-bar-bills" style="width: 38%"></div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="video-modal" id="video-modal" hidden>
+        <div class="video-modal-dialog" role="dialog" aria-modal="true" aria-label="How Spendly works">
+            <button type="button" class="video-modal-close" aria-label="Close video">&times;</button>
+            <div class="video-modal-frame">
+                <iframe
+                    id="video-modal-player"
+                    data-video-src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&amp;rel=0"
+                    title="How Spendly works"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen
+                ></iframe>
             </div>
         </div>
     </div>
