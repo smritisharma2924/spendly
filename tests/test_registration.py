@@ -18,11 +18,17 @@ from database import db
 def flask_app(tmp_path, monkeypatch):
     # App import initializes/seeds SQLite, so select the test database first.
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "registration.db")
+    monkeypatch.setenv("SECRET_KEY", "registration-test-secret")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     application = importlib.import_module("app").app
     # Cached app imports do not repeat startup for subsequent test databases.
     db.init_db()
     db.seed_db()
     monkeypatch.setitem(application.config, "TESTING", True)
+    monkeypatch.setitem(
+        application.config, "SECRET_KEY", "registration-test-secret",
+    )
+    monkeypatch.setitem(application.config, "SESSION_COOKIE_SECURE", False)
     return application
 
 
@@ -116,7 +122,8 @@ def test_success_persists_user_and_redirects_without_session(
         login = client.get(response.headers["Location"])
         assert login.status_code == 200
         assert b"Sign in to your Spendly account" in login.data
-        assert not login.headers.getlist("Set-Cookie")
+        with client.session_transaction() as login_session:
+            assert "user_id" not in login_session
     assert snapshot() == (users, expenses)
 
 

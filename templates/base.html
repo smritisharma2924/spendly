@@ -19,8 +19,16 @@
                 <span class="brand-name">Spendly</span>
             </a>
             <div class="nav-links">
+                {% if g.user %}
+                <span class="nav-user" title="{{ g.user['name'] }}">{{ g.user['name'] }}</span>
+                <form class="nav-logout" method="POST" action="{{ url_for('logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="nav-cta">Log out</button>
+                </form>
+                {% else %}
                 <a href="{{ url_for('login') }}">Sign in</a>
                 <a href="{{ url_for('register') }}" class="nav-cta">Get started</a>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -34,8 +42,8 @@
             <span class="brand-icon">◈</span>
             <span class="footer-name">Spendly</span>
             <p class="footer-copy">Track every rupee. Own your finances.</p>
-            <a href="/terms">Terms and Conditions</a>
-            <a href="/privacy">Privacy Policy</a>
+            <a href="{{ url_for('terms') }}">Terms and Conditions</a>
+            <a href="{{ url_for('privacy') }}">Privacy Policy</a>
         </div>
     </footer>
 

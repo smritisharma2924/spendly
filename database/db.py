@@ -40,6 +40,29 @@ def create_user(name, email, password):
     return user_id
 
 
+def get_user_by_email(normalized_email):
+    """Return a unique case-insensitive match, or None if absent/ambiguous."""
+    with closing(get_db()) as connection:
+        matches = [
+            row["id"]
+            for row in connection.execute("SELECT id, email FROM users")
+            if row["email"].lower() == normalized_email
+        ]
+        if len(matches) != 1:
+            return None
+        return connection.execute(
+            "SELECT * FROM users WHERE id = ?", (matches[0],),
+        ).fetchone()
+
+
+def get_user_by_id(user_id):
+    """Return a user by ID, or None when the account no longer exists."""
+    with closing(get_db()) as connection:
+        return connection.execute(
+            "SELECT * FROM users WHERE id = ?", (user_id,),
+        ).fetchone()
+
+
 def get_db():
     """Return a configured connection; the caller is responsible for closing it."""
     connection = sqlite3.connect(DB_PATH)

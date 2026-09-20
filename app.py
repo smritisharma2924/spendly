@@ -1,12 +1,70 @@
-from flask import Flask, redirect, render_template, request, url_for
+import hmac
+import os
+import secrets
 
-from database.db import DuplicateEmailError, create_user, init_db, seed_db
+from flask import (
+    Flask, abort, flash, g, redirect, render_template, request, session, url_for,
+)
+from werkzeug.security import check_password_hash
+
+from database.db import (
+    DuplicateEmailError, create_user, get_user_by_email, get_user_by_id,
+    init_db, seed_db,
+)
 
 app = Flask(__name__)
+secret_key = os.environ.get("SECRET_KEY")
+if not secret_key:
+    raise RuntimeError("Set a nonempty SECRET_KEY environment variable.")
+
+secure_cookie = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
+if secure_cookie not in ("true", "false", "1", "0"):
+    raise RuntimeError("SESSION_COOKIE_SECURE must be true, false, 1, or 0.")
+app.config.update(
+    SECRET_KEY=secret_key,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=secure_cookie in ("true", "1"),
+)
 
 with app.app_context():
     init_db()
     seed_db()
+
+
+@app.before_request
+def load_current_user():
+    g.user = None
+    if "user_id" not in session:
+        return
+    user_id = session["user_id"]
+    if type(user_id) is not int or not 0 < user_id <= 9223372036854775807:
+        session.clear()
+        return
+    g.user = get_user_by_id(user_id)
+    if g.user is None:
+        session.clear()
+
+
+@app.template_global()
+def csrf_token():
+    """Create a token only when a rendered form needs one."""
+    current = session.get("csrf_token")
+    if not isinstance(current, str) or not current:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
+
+
+def valid_csrf_token():
+    expected = session.get("csrf_token")
+    supplied = request.form.get("csrf_token")
+    return (
+        isinstance(expected, str) and bool(expected)
+        and isinstance(supplied, str)
+        and hmac.compare_digest(
+            expected.encode("utf-8"), supplied.encode("utf-8"),
+        )
+    )
 
 
 # ------------------------------------------------------------------ #
@@ -71,19 +129,57 @@ def register():
     ), status
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    submitted_email = request.form.get("email", "")
+    if request.method == "POST" and not valid_csrf_token():
+        return render_template(
+            "login.html", email=submitted_email,
+            error="Your form has expired. Please try again.",
+        ), 400
+    if g.user is not None:
+        return redirect(url_for("landing"))
+    if request.method != "POST":
+        return render_template("login.html", email="")
+
+    email = submitted_email.strip().lower()
+    password = request.form.get("password", "")
+    local_part, separator, domain = email.partition("@")
+    if (
+        not separator or not local_part or not domain or "@" in domain
+        or any(character.isspace() for character in email)
+    ):
+        error = "Please enter a valid email address."
+    elif not password:
+        error = "Please enter your password."
+    else:
+        user = get_user_by_email(email)
+        if user is not None and check_password_hash(
+            user["password_hash"], password,
+        ):
+            session.clear()
+            session["user_id"] = user["id"]
+            session["csrf_token"] = secrets.token_urlsafe(32)
+            return redirect(url_for("landing"))
+        flash("Invalid email or password.", "error")
+        return render_template("login.html", email=submitted_email), 401
+
+    return render_template(
+        "login.html", email=submitted_email, error=error,
+    ), 400
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    if not valid_csrf_token():
+        abort(400)
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ------------------------------------------------------------------ #
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
-
-@app.route("/logout")
-def logout():
-    return "Logout — coming in Step 3"
-
 
 @app.route("/profile")
 def profile():
