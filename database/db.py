@@ -11,6 +11,35 @@ from werkzeug.security import generate_password_hash
 DB_PATH = Path(__file__).resolve().parent.parent / "expense_tracker.db"
 
 
+class DuplicateEmailError(Exception):
+    """An account already uses the submitted email address."""
+
+
+def create_user(name, email, password):
+    """Save validated, normalized registration data and return the user ID.
+
+    The caller supplies a trimmed name and a trimmed, lowercase email.
+    Duplicate emails raise DuplicateEmailError; other errors propagate.
+    """
+    password_hash = generate_password_hash(password)
+    with closing(get_db()) as connection:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            # Match Python's email normalization, including non-ASCII letters.
+            # Hold the write lock across both the duplicate check and insert.
+            existing_emails = connection.execute("SELECT email FROM users")
+            if any(row["email"].lower() == email for row in existing_emails):
+                raise DuplicateEmailError()
+
+            cursor = connection.execute(
+                "INSERT INTO users (name, email, password_hash) "
+                "VALUES (?, ?, ?)",
+                (name, email, password_hash),
+            )
+            user_id = cursor.lastrowid
+    return user_id
+
+
 def get_db():
     """Return a configured connection; the caller is responsible for closing it."""
     connection = sqlite3.connect(DB_PATH)
