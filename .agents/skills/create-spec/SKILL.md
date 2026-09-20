@@ -16,8 +16,11 @@ Example invocation:
 
 `$create-spec step=2 feature="Registration"`
 
-## Step 1 — Parse the inputs
+## Step 1 - Check working directory is clean
+Run `git status` and check for uncommitted, unstaged, or untracked files. If any exist, stop immediately and tell the user to commit or stash changes before proceeding.
+DO NOT CONTINUE until the working directory is clean.
 
+## Step 2 — Parse the inputs
 From the user's request, extract:
 
 1. `step_number`
@@ -42,9 +45,33 @@ From the user's request, extract:
      - `Registration` → `registration`
      - `Login and Logout` → `login-logout`
 
+4. `branch_name`
+   - Construct the branch name using the feature slug.
+   - Format: `feature/<feature_slug>`
+   - Examples:
+     - `registration` → `feature/registration`
+     - `login-logout` → `feature/login-logout`
+
 If the step number or feature cannot be confidently inferred from the user's request, ask the user to clarify before proceeding.
 
-## Step 2 — Research the codebase
+## Step 3 — Check branch name is not taken
+Run `git branch` to list existing branches.
+If `branch_name` is already taken, append a number: `feature/registration-01`, `feature/registration-02`, etc.
+
+## Step 4 - Switch to main and pull latest changes
+Run:
+```
+git checkout main
+git pull origin main
+```
+
+## Step 5 - Create and switch to the feature branch
+Run:
+```
+git checkout -b <branch_name>
+```
+
+## Step 6 — Research the codebase
 
 Before writing the specification, read:
 
@@ -59,9 +86,11 @@ If the requested step is already complete, warn the user and stop.
 
 If a specification already exists for the same step or feature, do not overwrite or duplicate it. Tell the user which existing specification conflicts with the request and stop.
 
-## Step 3 — Write the specification
+## Step 7 — Write the specification
 
 Generate a specification document using exactly this structure:
+
+---
 
 # Spec: <feature_title>
 
@@ -156,7 +185,9 @@ Every checklist item must describe something that can be verified by running or 
 
 Do not use vague items such as "works correctly" or "looks good."
 
-## Step 4 — Save the specification
+---
+
+## Step 8 — Save the specification
 
 Save the completed specification to:
 
@@ -173,7 +204,7 @@ Do not implement the feature as part of this skill.
 
 This skill is for research and specification creation only.
 
-## Step 5 — Report to the user
+## Step 9 — Report to the user
 
 After successfully creating the file, report:
 
