@@ -13,22 +13,26 @@
         </div>
 
         <div class="auth-card">
+            {% for message in get_flashed_messages(category_filter=['error']) %}
+            <div class="auth-error" role="alert">{{ message }}</div>
+            {% endfor %}
             {% if error %}
-            <div class="auth-error">{{ error }}</div>
+            <div class="auth-error" role="alert">{{ error }}</div>
             {% endif %}
 
-            <form method="POST" action="/login">
+            <form method="POST" action="{{ url_for('login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="email">Email address</label>
                     <input type="email" id="email" name="email"
                            class="form-input" placeholder="nitish@example.com"
-                           required autofocus>
+                           value="{{ email }}" autocomplete="email" required autofocus>
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" name="password"
                            class="form-input" placeholder="Your password"
-                           required>
+                           autocomplete="current-password" required>
                 </div>
                 <button type="submit" class="btn-submit">Sign in</button>
             </form>
