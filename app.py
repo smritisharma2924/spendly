@@ -1,6 +1,6 @@
-from flask import Flask, render_template
+from flask import Flask, redirect, render_template, request, url_for
 
-from database.db import get_db, init_db, seed_db
+from database.db import DuplicateEmailError, create_user, init_db, seed_db
 
 app = Flask(__name__)
 
@@ -28,9 +28,47 @@ def privacy():
     return render_template("privacy.html")
 
 
-@app.route("/register")
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    return render_template("register.html")
+    if request.method != "POST":
+        return render_template("register.html", name="", email="")
+
+    submitted_name = request.form.get("name", "")
+    submitted_email = request.form.get("email", "")
+    password = request.form.get("password", "")
+    confirm_password = request.form.get("confirm_password", "")
+    name = submitted_name.strip()
+    email = submitted_email.strip().lower()
+    local_part, separator, domain = email.partition("@")
+
+    error = None
+    status = 400
+    if not name:
+        error = "Please enter your name."
+    elif (
+        not separator or not local_part or not domain or "@" in domain
+        or any(character.isspace() for character in email)
+    ):
+        error = "Please enter a valid email address."
+    elif len(password) < 8:
+        error = "Password must be at least 8 characters."
+    elif not confirm_password:
+        error = "Please confirm your password."
+    elif password != confirm_password:
+        error = "Passwords do not match."
+    else:
+        try:
+            create_user(name, email, password)
+        except DuplicateEmailError:
+            error = "An account with this email already exists."
+            status = 409
+        else:
+            return redirect(url_for("login"))
+
+    return render_template(
+        "register.html", error=error,
+        name=submitted_name, email=submitted_email,
+    ), status
 
 
 @app.route("/login")
