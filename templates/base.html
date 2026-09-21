@@ -13,14 +13,19 @@
 <body>
 
     <nav class="navbar">
-        <div class="nav-inner">
+        <div class="nav-inner{% if g.user %} nav-inner-authenticated{% endif %}">
             <a href="{{ url_for('landing') }}" class="nav-brand">
                 <span class="brand-icon">◈</span>
                 <span class="brand-name">Spendly</span>
             </a>
             <div class="nav-links">
                 {% if g.user %}
-                <span class="nav-user" title="{{ g.user['name'] }}">{{ g.user['name'] }}</span>
+                <a href="{{ url_for('profile') }}" class="nav-profile"
+                   title="{{ g.user['name'] }}"
+                   aria-label="{% if g.user['name'].strip() %}View profile for {{ g.user['name'] }}{% else %}Your profile{% endif %}"
+                   {% if request.endpoint == 'profile' %}aria-current="page"{% endif %}>
+                    <span class="nav-user">{{ g.user['name'] if g.user['name'].strip() else 'Your profile' }}</span>
+                </a>
                 <form class="nav-logout" method="POST" action="{{ url_for('logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="nav-cta">Log out</button>
@@ -47,7 +52,10 @@
         </div>
     </footer>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% if request.endpoint == 'profile' %}
+    <script defer src="https://unpkg.com/lucide@0.510.0/dist/umd/lucide.min.js"></script>
+    {% endif %}
+    <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

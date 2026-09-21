@@ -1,0 +1,311 @@
+.profile-section {
+    padding: 3rem 1rem 4rem;
+}
+
+.profile-container {
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.profile-header {
+    max-width: 720px;
+    margin-bottom: 2rem;
+}
+
+.profile-header h1 {
+    margin-bottom: 0.5rem;
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+.profile-header p,
+.profile-spending-header p,
+.profile-table-hint {
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+}
+
+.profile-sample-label,
+.profile-eyebrow {
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.profile-sample-label {
+    display: inline-block;
+    margin-bottom: 1rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-light);
+}
+
+.profile-account-card,
+.profile-stat,
+.profile-transactions,
+.profile-breakdown {
+    min-width: 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--paper-card);
+    box-shadow: 0 1px 3px rgba(15, 15, 15, 0.04);
+}
+
+.profile-account-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+}
+
+.profile-account-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 1rem;
+}
+
+.profile-account-heading > div { min-width: 0; }
+
+.profile-initial {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 50%;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-family: var(--font-display);
+    font-size: 2rem;
+}
+
+.profile-eyebrow { margin-bottom: 0.25rem; }
+
+.profile-account-heading h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.profile-account-email {
+    margin-top: 0.25rem;
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+
+.profile-account-details {
+    min-width: 0;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.profile-field + .profile-field { margin-top: 1rem; }
+
+.profile-field dt {
+    margin-bottom: 0.25rem;
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+}
+
+.profile-field dd {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.profile-spending { margin-top: 2rem; }
+.profile-spending-header { margin-bottom: 1.5rem; }
+
+.profile-spending-header h2 {
+    margin-bottom: 0.5rem;
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 400;
+}
+
+.profile-stats,
+.profile-spending-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.profile-stats { margin-bottom: 1.5rem; }
+
+.profile-stat {
+    display: block;
+}
+
+.profile-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-light);
+    color: var(--accent);
+}
+
+.profile-icon svg,
+.profile-icon i {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.profile-stat dt {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+}
+
+.profile-stat dd {
+    margin-top: 1rem;
+    font-size: 2rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.profile-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.profile-transactions h3,
+.profile-breakdown h3 {
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.profile-table-hint { margin-bottom: 0.75rem; }
+
+.profile-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+}
+
+.profile-table-scroll:focus-visible {
+    outline: 3px solid var(--accent-2);
+    outline-offset: 3px;
+}
+
+.profile-transactions table {
+    width: 100%;
+    min-width: 520px;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.profile-transactions caption {
+    padding: 0 0 0.75rem;
+    color: var(--ink-muted);
+    font-size: 0.75rem;
+    text-align: left;
+}
+
+.profile-transactions th,
+.profile-transactions td {
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid var(--border-soft);
+    text-align: left;
+}
+
+.profile-transactions th {
+    color: var(--ink-muted);
+    font-weight: 500;
+}
+
+.profile-transactions tbody tr { transition: background 0.2s; }
+.profile-transactions tbody tr:hover { background: var(--paper-warm); }
+.profile-transactions tbody tr:last-child td { border-bottom: 0; }
+.profile-transactions time { white-space: nowrap; }
+
+.profile-transactions .profile-amount {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.profile-category {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.profile-category-food {
+    background: var(--accent-light);
+    color: var(--accent);
+}
+
+.profile-category-bills {
+    background: var(--accent-2-light);
+    color: var(--ink-soft);
+}
+
+.profile-category-transport {
+    background: var(--paper-warm);
+    color: var(--ink-soft);
+}
+
+.profile-breakdown ul { list-style: none; }
+
+.profile-breakdown li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.profile-breakdown li:first-child { padding-top: 0; }
+.profile-breakdown li:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.profile-category-total {
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+    .profile-section { padding: 4rem 2rem 5rem; }
+    .profile-account-card {
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+        align-items: center;
+    }
+    .profile-account-details {
+        padding-top: 0;
+        padding-left: 1.5rem;
+        border-top: 0;
+        border-left: 1px solid var(--border-soft);
+    }
+    .profile-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1024px) {
+    .profile-spending-grid {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        gap: 1.5rem;
+    }
+}

@@ -1,6 +1,10 @@
 const videoModal = document.querySelector("#video-modal");
 const videoModalTrigger = document.querySelector("#video-modal-trigger");
 
+if (document.querySelector("[data-lucide]") && window.lucide) {
+    window.lucide.createIcons();
+}
+
 if (videoModal && videoModalTrigger) {
     const videoModalClose = videoModal.querySelector(".video-modal-close");
     const videoModalPlayer = videoModal.querySelector("#video-modal-player");

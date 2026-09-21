@@ -111,7 +111,7 @@ def test_demo_login_session_and_logout(client, flask_app):
         "csrf_token": old_token, "next": "https://example.com",
     })
     assert response.status_code == 302
-    assert response.headers["Location"] == "/"
+    assert response.headers["Location"] == "/profile"
     current = session_data(client)
     assert set(current) == {"user_id", "csrf_token"}
     assert type(current["user_id"]) is int
@@ -327,13 +327,13 @@ def test_authenticated_login_does_not_switch_accounts(client):
     for method in ("get", "head"):
         response = getattr(client, method)("/login?next=https://example.com")
         assert response.status_code == 302
-        assert response.headers["Location"] == "/"
+        assert response.headers["Location"] == "/profile"
     response = client.post("/login", data={
         "email": "other@example.com", "password": "other-secret",
         "csrf_token": before["csrf_token"],
     })
     assert response.status_code == 302
-    assert response.headers["Location"] == "/"
+    assert response.headers["Location"] == "/profile"
     assert session_data(client) == before
 
 
