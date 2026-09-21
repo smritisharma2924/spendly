@@ -12,6 +12,43 @@ from database.db import (
     init_db, seed_db,
 )
 
+
+# Design-preview data; expense persistence is connected in a later step.
+PROFILE_SAMPLE_DATA = {
+    "period": "September 2026",
+    "user": {
+        "name": "Aarav Sharma",
+        "email": "aarav.sharma@example.com",
+        "initials": "AS",
+        "member_since": "1 Sep 2026",
+        "member_since_iso": "2026-09-01",
+    },
+    "summary": [
+        {"label": "Total spent", "value": "₹3,800.00"},
+        {"label": "Transactions", "value": "4"},
+        {"label": "Top category", "value": "Bills"},
+    ],
+    "transactions": [
+        {"date": "2026-09-21", "date_label": "21 Sep 2026",
+         "description": "Electricity bill", "category": "Bills",
+         "category_class": "bills", "amount": 1800},
+        {"date": "2026-09-20", "date_label": "20 Sep 2026",
+         "description": "Weekly groceries", "category": "Food",
+         "category_class": "food", "amount": 1250},
+        {"date": "2026-09-19", "date_label": "19 Sep 2026",
+         "description": "Metro card recharge", "category": "Transport",
+         "category_class": "transport", "amount": 300},
+        {"date": "2026-09-18", "date_label": "18 Sep 2026",
+         "description": "Lunch with friends", "category": "Food",
+         "category_class": "food", "amount": 450},
+    ],
+    "categories": [
+        {"name": "Bills", "category_class": "bills", "total": 1800},
+        {"name": "Food", "category_class": "food", "total": 1700},
+        {"name": "Transport", "category_class": "transport", "total": 300},
+    ],
+}
+
 app = Flask(__name__)
 secret_key = os.environ.get("SECRET_KEY")
 if not secret_key:
@@ -138,7 +175,7 @@ def login():
             error="Your form has expired. Please try again.",
         ), 400
     if g.user is not None:
-        return redirect(url_for("landing"))
+        return redirect(url_for("profile"))
     if request.method != "POST":
         return render_template("login.html", email="")
 
@@ -160,7 +197,7 @@ def login():
             session.clear()
             session["user_id"] = user["id"]
             session["csrf_token"] = secrets.token_urlsafe(32)
-            return redirect(url_for("landing"))
+            return redirect(url_for("profile"))
         flash("Invalid email or password.", "error")
         return render_template("login.html", email=submitted_email), 401
 
@@ -177,13 +214,18 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/profile")
+def profile():
+    if g.user is None:
+        return redirect(url_for("login"))
+    return render_template(
+        "profile.html", sample_dashboard=PROFILE_SAMPLE_DATA,
+    )
+
+
 # ------------------------------------------------------------------ #
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
-
-@app.route("/profile")
-def profile():
-    return "Profile page — coming in Step 4"
 
 
 @app.route("/expenses/add")

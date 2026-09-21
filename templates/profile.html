@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Profile preview — Spendly{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="profile-section" aria-labelledby="profile-title">
+    <div class="profile-container">
+        <header class="profile-header">
+            <span class="profile-sample-label">Sample data</span>
+            <h1 id="profile-title">Profile preview</h1>
+            <p>Preview a sample profile and expenses for {{ sample_dashboard.period }}. Your signed-in account appears in the navigation.</p>
+        </header>
+
+        <section class="profile-account-card" aria-labelledby="account-details-title">
+            <div class="profile-account-heading">
+                <span class="profile-initial" aria-hidden="true">{{ sample_dashboard.user.initials }}</span>
+                <div>
+                    <p class="profile-eyebrow">Sample user</p>
+                    <h2 id="account-details-title">{{ sample_dashboard.user.name }}</h2>
+                    <p class="profile-account-email">{{ sample_dashboard.user.email }}</p>
+                </div>
+            </div>
+            <div class="profile-account-details">
+                <dl id="profile-account-fields">
+                    <div class="profile-field">
+                        <dt>Full name</dt>
+                        <dd>{{ sample_dashboard.user.name }}</dd>
+                    </div>
+                    <div class="profile-field">
+                        <dt>Email address</dt>
+                        <dd>{{ sample_dashboard.user.email }}</dd>
+                    </div>
+                    <div class="profile-field">
+                        <dt>Member since</dt>
+                        <dd><time id="profile-member-since" datetime="{{ sample_dashboard.user.member_since_iso }}">{{ sample_dashboard.user.member_since }}</time></dd>
+                    </div>
+                </dl>
+            </div>
+        </section>
+
+        <section class="profile-spending" aria-labelledby="spending-title">
+            <header class="profile-spending-header">
+                <h2 id="spending-title">Spending overview</h2>
+                <p>Example expenses for {{ sample_dashboard.period }}. These amounts are sample data, not your recorded spending.</p>
+            </header>
+
+            <dl class="profile-stats" id="profile-summary">
+                {% for stat in sample_dashboard.summary %}
+                <div class="profile-stat">
+                    <dt>
+                        <span class="profile-icon" aria-hidden="true">
+                            <i data-lucide="{{ ['wallet', 'receipt', 'tag'][loop.index0] }}"></i>
+                        </span>
+                        <span>{{ stat.label }}</span>
+                    </dt>
+                    <dd>{{ stat.value }}</dd>
+                </div>
+                {% endfor %}
+            </dl>
+
+            <div class="profile-spending-grid">
+                <section class="profile-transactions" aria-labelledby="transactions-title">
+                    <h3 id="transactions-title" class="profile-section-title">
+                        <span class="profile-icon" aria-hidden="true"><i data-lucide="credit-card"></i></span>
+                        Transaction history
+                    </h3>
+                    <p class="profile-table-hint" id="transaction-scroll-hint">Scroll horizontally to see all columns on smaller screens.</p>
+                    <div class="profile-table-scroll" role="region" tabindex="0"
+                         aria-labelledby="transactions-title" aria-describedby="transaction-scroll-hint">
+                        <table id="profile-transactions">
+                            <caption>Sample transactions — {{ sample_dashboard.period }} (INR)</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Description</th>
+                                    <th scope="col">Category</th>
+                                    <th scope="col" class="profile-amount">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for transaction in sample_dashboard.transactions %}
+                                <tr>
+                                    <td><time datetime="{{ transaction.date }}">{{ transaction.date_label }}</time></td>
+                                    <td>{{ transaction.description }}</td>
+                                    <td><span class="profile-category profile-category-{{ transaction.category_class }}">{{ transaction.category }}</span></td>
+                                    <td class="profile-amount">₹{{ '{:,.2f}'.format(transaction.amount) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="profile-breakdown" aria-labelledby="categories-title">
+                    <h3 id="categories-title" class="profile-section-title">
+                        <span class="profile-icon" aria-hidden="true"><i data-lucide="tags"></i></span>
+                        Category breakdown
+                    </h3>
+                    <ul id="profile-categories">
+                        {% for category in sample_dashboard.categories %}
+                        <li>
+                            <span class="profile-category profile-category-{{ category.category_class }}">{{ category.name }}</span>
+                            <span class="profile-category-total">₹{{ '{:,.2f}'.format(category.total) }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}
