@@ -1,52 +1,24 @@
 import hmac
 import os
 import secrets
+from datetime import datetime
 
 from flask import (
     Flask, abort, flash, g, redirect, render_template, request, session, url_for,
 )
 from werkzeug.security import check_password_hash
 
+from database import queries as profile_queries
 from database.db import (
     DuplicateEmailError, create_user, get_user_by_email, get_user_by_id,
     init_db, seed_db,
 )
 
 
-# Design-preview data; expense persistence is connected in a later step.
-PROFILE_SAMPLE_DATA = {
-    "period": "September 2026",
-    "user": {
-        "name": "Aarav Sharma",
-        "email": "aarav.sharma@example.com",
-        "initials": "AS",
-        "member_since": "1 Sep 2026",
-        "member_since_iso": "2026-09-01",
-    },
-    "summary": [
-        {"label": "Total spent", "value": "₹3,800.00"},
-        {"label": "Transactions", "value": "4"},
-        {"label": "Top category", "value": "Bills"},
-    ],
-    "transactions": [
-        {"date": "2026-09-21", "date_label": "21 Sep 2026",
-         "description": "Electricity bill", "category": "Bills",
-         "category_class": "bills", "amount": 1800},
-        {"date": "2026-09-20", "date_label": "20 Sep 2026",
-         "description": "Weekly groceries", "category": "Food",
-         "category_class": "food", "amount": 1250},
-        {"date": "2026-09-19", "date_label": "19 Sep 2026",
-         "description": "Metro card recharge", "category": "Transport",
-         "category_class": "transport", "amount": 300},
-        {"date": "2026-09-18", "date_label": "18 Sep 2026",
-         "description": "Lunch with friends", "category": "Food",
-         "category_class": "food", "amount": 450},
-    ],
-    "categories": [
-        {"name": "Bills", "category_class": "bills", "total": 1800},
-        {"name": "Food", "category_class": "food", "total": 1700},
-        {"name": "Transport", "category_class": "transport", "total": 300},
-    ],
+CATEGORY_CLASSES = {
+    "Food": "food", "Transport": "transport", "Bills": "bills",
+    "Health": "health", "Entertainment": "entertainment",
+    "Shopping": "shopping", "Other": "other",
 }
 
 app = Flask(__name__)
@@ -214,13 +186,100 @@ def logout():
     return redirect(url_for("login"))
 
 
+# Profile presentation helpers shared by the three spending sections.
+def profile_date(value):
+    """Parse a stored ISO date or timestamp, allowing missing legacy values."""
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def profile_category_class(category):
+    return CATEGORY_CLASSES.get(category, "other")
+
+
+def profile_currency(amount):
+    return "₹{:,.2f}".format(amount)
+
+
+# Transaction history — owned by implementation subagent 1.
+def build_profile_transactions(user_id):
+    """Prepare the latest transaction rows for the profile template."""
+    transactions = []
+    for transaction in profile_queries.get_recent_transactions(user_id):
+        transaction_date = profile_date(transaction["date"])
+        description = transaction["description"]
+        transactions.append({
+            "date": transaction_date.isoformat() if transaction_date else None,
+            "date_label": (
+                transaction_date.strftime("%d %b %Y")
+                if transaction_date else "—"
+            ),
+            "description": (
+                description if description and description.strip() else "—"
+            ),
+            "category": transaction["category"],
+            "category_class": profile_category_class(transaction["category"]),
+            "amount": transaction["amount"],
+        })
+    return transactions
+
+
+# Summary stats — owned by implementation subagent 2.
+def build_profile_summary(user_id):
+    """Prepare the three spending overview cards."""
+    summary = profile_queries.get_summary_stats(user_id)
+    return [
+        {"label": "Total spent", "value": profile_currency(summary["total_spent"])},
+        {"label": "Transactions", "value": str(summary["transaction_count"])},
+        {"label": "Top category", "value": summary["top_category"]},
+    ]
+
+
+# Category breakdown — owned by implementation subagent 3.
+def build_profile_categories(user_id):
+    """Prepare category totals and percentages for the profile template."""
+    return [
+        {
+            "name": category["name"],
+            "total": category["amount"],
+            "pct": category["pct"],
+            "category_class": profile_category_class(category["name"]),
+        }
+        for category in profile_queries.get_category_breakdown(user_id)
+    ]
+
+
 @app.route("/profile")
 def profile():
     if g.user is None:
         return redirect(url_for("login"))
-    return render_template(
-        "profile.html", sample_dashboard=PROFILE_SAMPLE_DATA,
+    user_id = g.user["id"]
+    user = profile_queries.get_user_by_id(user_id)
+    if user is None:
+        session.clear()
+        return redirect(url_for("login"))
+    name_parts = user["name"].split()
+    initials = "?"
+    if name_parts:
+        initials = name_parts[0][0]
+        if len(name_parts) > 1:
+            initials += name_parts[-1][0]
+        initials = initials.upper()[:2]
+    joined = profile_date(g.user["created_at"])
+    user.update(
+        name=user["name"] if name_parts else "Your profile",
+        initials=initials,
+        member_since_iso=joined.isoformat() if joined else None,
     )
+    dashboard = {
+        "user": user,
+        "summary": build_profile_summary(user_id),
+        "transactions": build_profile_transactions(user_id),
+        "categories": build_profile_categories(user_id),
+    }
+    return render_template("profile.html", dashboard=dashboard)
 
 
 # ------------------------------------------------------------------ #

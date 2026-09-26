@@ -3,6 +3,7 @@
 import importlib
 import re
 from contextlib import closing
+from datetime import datetime
 from decimal import Decimal
 from html.parser import HTMLParser
 from pathlib import Path
@@ -101,7 +102,15 @@ def snapshot():
         )
 
 
-def test_anonymous_access_and_methods(client):
+def test_anonymous_access_and_methods(client, monkeypatch):
+    from database import queries
+
+    def unexpected_lookup(*args):
+        pytest.fail("Anonymous requests must not query profile data")
+
+    for name in ("get_user_by_id", "get_summary_stats",
+                 "get_recent_transactions", "get_category_breakdown"):
+        monkeypatch.setattr(queries, name, unexpected_lookup)
     baseline = snapshot()
     for method in ("get", "head"):
         response = getattr(client, method)("/profile")
@@ -122,10 +131,10 @@ def test_demo_profile_semantics_and_read_only_requests(client):
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     page = PageParser(response)
-    assert "Profile preview — Spendly" in html
-    assert "Aarav Sharma" in html
-    assert "aarav.sharma@example.com" in html
-    assert "demo@spendly.com" not in html
+    assert "Profile — Spendly" in html
+    assert "Demo User" in html
+    assert "aarav.sharma@example.com" not in html
+    assert "demo@spendly.com" in html
     assert "coming in Step 4" not in html
     assert len(page.attributes("h1")) == 1
     account = PageParser(response, "profile-account-fields")
@@ -142,7 +151,7 @@ def test_demo_profile_semantics_and_read_only_requests(client):
     user = db.get_user_by_email("demo@spendly.com")
     assert user["password_hash"] not in html
     assert account.attributes("time") == [{
-        "id": "profile-member-since", "datetime": "2026-09-01",
+        "id": "profile-member-since", "datetime": user["created_at"][:10],
     }]
     assert page.attributes("form") == [{
         "class": "nav-logout", "method": "POST", "action": "/logout",
@@ -159,7 +168,7 @@ def test_demo_profile_semantics_and_read_only_requests(client):
     assert snapshot() == baseline
 
 
-def test_two_accounts_share_sample_body_but_keep_own_navigation(client, flask_app):
+def test_two_accounts_keep_private_data_and_ignore_requested_id(client, flask_app):
     other = flask_app.test_client()
     response = other.post("/register", data={
         "name": "Other Person", "email": "other@example.com",
@@ -170,6 +179,13 @@ def test_two_accounts_share_sample_body_but_keep_own_navigation(client, flask_ap
     login(other, "other@example.com", "other-password")
     demo_id = db.get_user_by_email("demo@spendly.com")["id"]
     other_id = db.get_user_by_email("other@example.com")["id"]
+    with closing(db.get_db()) as connection:
+        with connection:
+            connection.execute(
+                "INSERT INTO expenses (user_id, amount, category, date, "
+                "description) VALUES (?, ?, ?, ?, ?)",
+                (other_id, 1234, "Shopping", "2020-01-01", "Private purchase"),
+            )
     for browser, requested_id, own_name, foreign_name in (
         (client, other_id, "Demo User", "Other Person"),
         (other, demo_id, "Other Person", "Demo User"),
@@ -177,8 +193,14 @@ def test_two_accounts_share_sample_body_but_keep_own_navigation(client, flask_ap
         response = browser.get("/profile?user_id={}".format(requested_id))
         assert response.status_code == 200
         html = response.get_data(as_text=True)
-        assert "Aarav Sharma" in html
-        assert "aarav.sharma@example.com" in html
+        assert own_name in html
+        assert foreign_name not in html
+        assert "Aarav Sharma" not in html
+        if browser is other:
+            assert "Private purchase" in html and "₹1,234.00" in html
+            assert "₹235.50" not in html
+        else:
+            assert "Private purchase" not in html and "₹235.50" in html
         link = PageParser(response).profile_link()
         assert link["aria-label"] == "View profile for " + own_name
         assert foreign_name not in link["aria-label"]
@@ -216,7 +238,7 @@ def test_deleted_account_and_tampered_cookie(client):
 
 
 @pytest.mark.parametrize("stored", [None, "", "invalid", "2024-02-29 12:34:56"])
-def test_sample_membership_date_ignores_stored_account_date(client, stored):
+def test_membership_date_uses_stored_account_date_or_fallback(client, stored):
     login(client)
     with closing(db.get_db()) as connection:
         with connection:
@@ -226,11 +248,15 @@ def test_sample_membership_date_ignores_stored_account_date(client, stored):
             )
     response = client.get("/profile")
     assert response.status_code == 200
-    assert "1 Sep 2026" in response.get_data(as_text=True)
     account = PageParser(response, "profile-account-fields")
-    assert account.attributes("time") == [{
-        "id": "profile-member-since", "datetime": "2026-09-01",
-    }]
+    if stored == "2024-02-29 12:34:56":
+        assert account.texts("dd")[-1] == "February 2024"
+        assert account.attributes("time") == [{
+            "id": "profile-member-since", "datetime": "2024-02-29",
+        }]
+    else:
+        assert account.texts("dd")[-1] == "—"
+        assert account.attributes("time") == []
 
 
 def test_user_text_is_escaped_in_content_and_attributes(client):
@@ -248,19 +274,20 @@ def test_user_text_is_escaped_in_content_and_attributes(client):
     page = PageParser(response)
     assert name not in html and email not in html
     assert "&lt;script&gt;" in html
-    assert "&lt;img" not in html
+    assert "&lt;img" in html
     assert page.attributes("img") == []
     assert page.profile_link()["aria-label"] == "View profile for " + name
     assert page.profile_link()["title"] == name
     assert db.get_user_by_email(email)["password_hash"] not in html
 
 
-@pytest.mark.parametrize("name,accessible_name", [
-    ("", "Your profile"),
-    (" \t ", "Your profile"),
-    ("  Élodie", "View profile for   Élodie"),
+@pytest.mark.parametrize("name,accessible_name,initials", [
+    ("", "Your profile", "?"),
+    (" \t ", "Your profile", "?"),
+    ("  Élodie", "View profile for   Élodie", "É"),
+    ("Alex Middle Smith", "View profile for Alex Middle Smith", "AS"),
 ])
-def test_sample_initial_and_real_name_navigation(client, name, accessible_name):
+def test_initial_and_real_name_navigation(client, name, accessible_name, initials):
     login(client)
     with closing(db.get_db()) as connection:
         with connection:
@@ -269,7 +296,7 @@ def test_sample_initial_and_real_name_navigation(client, name, accessible_name):
                 (name, "demo@spendly.com"),
             )
     response = client.get("/profile")
-    assert 'class="profile-initial" aria-hidden="true">AS</span>' in (
+    assert 'class="profile-initial" aria-hidden="true">{}</span>'.format(initials) in (
         response.get_data(as_text=True)
     )
     link = PageParser(response).profile_link()
@@ -298,17 +325,18 @@ def test_navigation_and_logout(client):
     assert snapshot() == baseline
 
 
-def test_sample_dashboard_sections_and_reconciled_totals(client):
+def test_dashboard_sections_and_reconciled_seed_totals(client):
     login(client)
     baseline = snapshot()
     response = client.get("/profile")
     assert response.status_code == 200
-    assert "These amounts are sample data" in response.get_data(as_text=True)
+    assert "All-time spending" in response.get_data(as_text=True)
+    assert "Sample data" not in response.get_data(as_text=True)
 
     summary = PageParser(response, "profile-summary")
     stats = dict(zip(summary.texts("dt"), summary.texts("dd")))
     assert stats == {
-        "Total spent": "₹3,800.00", "Transactions": "4",
+        "Total spent": "₹235.50", "Transactions": "8",
         "Top category": "Bills",
     }
 
@@ -316,13 +344,15 @@ def test_sample_dashboard_sections_and_reconciled_totals(client):
     assert table.texts("th") == ["Date", "Description", "Category", "Amount"]
     assert all(attrs["scope"] == "col" for attrs in table.attributes("th"))
     assert table.texts("caption") == [
-        "Sample transactions — September 2026 (INR)",
+        "Your most recent expenses (INR)",
     ]
     cells = table.texts("td")
     rows = [cells[index:index + 4] for index in range(0, len(cells), 4)]
-    assert len(rows) == 4
-    assert rows[0] == ["21 Sep 2026", "Electricity bill", "Bills", "₹1,800.00"]
-    assert rows[-1] == ["18 Sep 2026", "Lunch with friends", "Food", "₹450.00"]
+    assert len(rows) == 8
+    assert rows[0][1:] == ["—", "Food", "₹25.00"]
+    assert rows[-1][1:] == ["—", "Food", "₹12.50"]
+    dates = [datetime.strptime(row[0], "%d %b %Y") for row in rows]
+    assert dates == sorted(dates, reverse=True)
     assert len(table.attributes("time")) == len(rows)
 
     def money(value):
@@ -333,19 +363,23 @@ def test_sample_dashboard_sections_and_reconciled_totals(client):
         previous = category_sums.get(category, Decimal(0))
         category_sums[category] = previous + money(amount)
     breakdown = PageParser(response, "profile-categories")
-    assert len(breakdown.attributes("li")) == 3
+    assert len(breakdown.attributes("li")) == 7
     displayed = {}
+    percentages = []
     for entry in breakdown.texts("li"):
         category, _, amount = entry.partition("₹")
+        amount, _, percentage = amount.partition("(")
         displayed[category.strip()] = Decimal(amount.strip().replace(",", ""))
+        percentages.append(int(percentage.rstrip("%)")))
     assert displayed == category_sums
     assert sum(displayed.values()) == money(stats["Total spent"])
     assert int(stats["Transactions"]) == len(rows)
     assert max(displayed, key=displayed.get) == stats["Top category"]
+    assert sum(percentages) == 100
     assert snapshot() == baseline
 
 
-def test_profile_preview_is_independent_of_persisted_expenses(client):
+def test_profile_reflects_persisted_expenses_without_writes(client):
     login(client)
     before = client.get("/profile")
     with closing(db.get_db()) as connection:
@@ -354,12 +388,14 @@ def test_profile_preview_is_independent_of_persisted_expenses(client):
     baseline = snapshot()
     after = client.get("/profile")
     for section_id in (
-        "profile-account-fields", "profile-summary",
-        "profile-transactions", "profile-categories",
+        "profile-summary", "profile-transactions", "profile-categories",
     ):
         expected = PageParser(before, section_id).nodes
-        assert PageParser(after, section_id).nodes == expected
-    assert "999,999" not in after.get_data(as_text=True)
+        assert PageParser(after, section_id).nodes != expected
+    assert PageParser(after, "profile-account-fields").nodes == PageParser(
+        before, "profile-account-fields",
+    ).nodes
+    assert "999,999" in after.get_data(as_text=True)
     assert snapshot() == baseline
 
 
@@ -375,10 +411,11 @@ def test_dashboard_styles_use_classes_and_table_is_keyboard_accessible(client):
     assert all("style" not in attrs for _, attrs in page.elements)
     badges = [attrs for attrs in page.attributes("span")
               if "profile-category" in attrs.get("class", "").split()]
-    assert len(badges) == 7
+    assert len(badges) == 15
     for attrs in badges:
         assert any("profile-category-" + category in attrs["class"].split()
-                   for category in ("bills", "food", "transport"))
+                   for category in ("bills", "food", "transport", "health",
+                                    "entertainment", "shopping", "other"))
     project = Path(__file__).resolve().parents[1]
     for path in ("templates/profile.html", "static/css/profile.css"):
         source = (project / path).read_text()
@@ -408,3 +445,70 @@ def test_profile_icons_are_decorative_and_lucide_loads_once(client):
     main_js = client.get("/static/js/main.js").get_data(as_text=True)
     assert "document.querySelector(\"[data-lucide]\")" in main_js
     assert "window.lucide" in main_js
+
+
+def test_new_account_empty_profile(client):
+    response = client.post("/register", data={
+        "name": "New Person", "email": "new@example.com",
+        "password": "password123", "confirm_password": "password123",
+    })
+    assert response.status_code == 302
+    login(client, "new@example.com", "password123")
+    response = client.get("/profile")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "New Person" in html and "new@example.com" in html
+    assert "Demo User" not in html and "Sample data" not in html
+    assert PageParser(response, "profile-summary").texts("dd") == ["₹0.00", "0", "—"]
+    assert "No expenses recorded yet." in html
+    assert "No category spending yet." in html
+
+
+def test_expense_content_is_escaped_with_safe_category_class(client):
+    login(client)
+    with closing(db.get_db()) as connection:
+        with connection:
+            connection.execute(
+                "UPDATE expenses SET category = ?, description = ?",
+                ('\"><img src=x onerror=alert(1)>', '<script>alert(1)</script>'),
+            )
+    response = client.get("/profile")
+    html = response.get_data(as_text=True)
+    assert "&lt;img" in html and "&lt;script&gt;" in html
+    assert PageParser(response).attributes("img") == []
+    assert all("profile-category-other" in attrs["class"].split()
+               for attrs in PageParser(response).attributes("span")
+               if "profile-category" in attrs.get("class", "").split())
+
+
+def test_route_history_limit_does_not_limit_summary(client):
+    login(client)
+    user_id = db.get_user_by_email("demo@spendly.com")["id"]
+    with closing(db.get_db()) as connection:
+        with connection:
+            connection.execute("DELETE FROM expenses WHERE user_id = ?", (user_id,))
+            connection.executemany(
+                "INSERT INTO expenses (user_id, amount, category, date, "
+                "description) VALUES (?, ?, ?, ?, ?)",
+                [(user_id, 10, "Food", "2020-01-01", "Expense {}".format(n))
+                 for n in range(12)],
+            )
+    response = client.get("/profile")
+    assert PageParser(response, "profile-summary").texts("dd") == ["₹120.00", "12", "Food"]
+    assert len(PageParser(response, "profile-transactions").texts("td")) == 40
+    assert "₹120.00" in PageParser(response, "profile-categories").texts("li")[0]
+    assert "(100%)" in PageParser(response, "profile-categories").texts("li")[0]
+
+
+def test_profile_does_not_mask_database_failure(client, monkeypatch):
+    import sqlite3
+    from database import queries
+
+    login(client)
+
+    def unavailable(user_id):
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(queries, "get_summary_stats", unavailable)
+    with pytest.raises(sqlite3.OperationalError, match="database unavailable"):
+        client.get("/profile")

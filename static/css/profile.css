@@ -27,21 +27,12 @@
     font-size: 0.875rem;
 }
 
-.profile-sample-label,
 .profile-eyebrow {
     color: var(--accent);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-}
-
-.profile-sample-label {
-    display: inline-block;
-    margin-bottom: 1rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--radius-sm);
-    background: var(--accent-light);
 }
 
 .profile-account-card,
@@ -249,17 +240,21 @@
     font-weight: 500;
 }
 
-.profile-category-food {
+.profile-category-food,
+.profile-category-health {
     background: var(--accent-light);
     color: var(--accent);
 }
 
-.profile-category-bills {
+.profile-category-bills,
+.profile-category-shopping {
     background: var(--accent-2-light);
     color: var(--ink-soft);
 }
 
-.profile-category-transport {
+.profile-category-transport,
+.profile-category-entertainment,
+.profile-category-other {
     background: var(--paper-warm);
     color: var(--ink-soft);
 }
@@ -287,6 +282,16 @@
     font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
+
+.profile-category-percent,
+.profile-empty {
+    color: var(--ink-muted);
+    font-weight: 400;
+}
+
+.profile-category-percent { white-space: nowrap; }
+.profile-category { overflow-wrap: anywhere; }
+.profile-transactions td { overflow-wrap: anywhere; }
 
 @media (min-width: 768px) {
     .profile-section { padding: 4rem 2rem 5rem; }
