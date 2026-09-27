@@ -2,6 +2,8 @@
 
 ## Overview
 
+Historical scope: the hardcoded-data requirements below describe the Step 04 milestone. Step 05 (`specs/05-backend-routes-for-profile-page.md`) supersedes those requirements with live database queries. Current regression tests should preserve the layout and authentication requirements while using Step 05 for profile data expectations.
+
 This feature replaces the `/profile` stub with a fully designed profile page showing static, hardcoded data. The goal is to establish the complete UI layout — user info card, transaction history table, summary stats, and category breakdown — before any real database queries are wired up in Step 5. Building the UI first lets the team validate the design in isolation and ensures the templates are ready for the backend-connection step.
 
 ## Depends on

@@ -106,7 +106,7 @@ File: `tests/test_backend_connection.py`
 - Response contains the seed user's name ("Demo User")
 - Response contains the seed user's email ("demo@spendly.com")
 - Response contains ₹ symbol
-- `total_spent` matches sum of all seed expenses (346.24)
+- `total_spent` matches the unchanged eight seed expenses from Step 01 (235.50)
 - `transaction_count` is 8
 - `top_category` is "Bills" (highest single-category total)
 - Transaction list appears in newest-first order
@@ -116,7 +116,7 @@ File: `tests/test_backend_connection.py`
 
 - [ ] Logging in as the seed user (demo@spendly.com / demo123) shows "Demo User" and
   "demo@spendly.com" on the profile page — not the hardcoded strings
-- [ ] Total spent displayed on the profile page equals ₹346.24
+- [ ] Total spent displayed on the profile page equals ₹235.50
 - [ ] Transaction count displayed is 8
 - [ ] Top category displayed is "Bills"
 - [ ] Transaction list shows 8 rows ordered newest date first

@@ -2,20 +2,22 @@
 
 ## Overview
 
-Allow registered users to sign in with their email and password, remain signed in across requests through a Flask session, and sign out through the shared navigation. Step 03 builds on the existing SQLite database and registration handler. Successful sign-in returns to the landing page, which displays the signed-in user's name and a logout control; profile and expense features remain separate roadmap steps.
+Allow registered users to sign in with their email and password, remain signed in across requests through a Flask session, and sign out through the shared navigation. Step 03 builds on the existing SQLite database and registration handler. Successful sign-in redirects to the profile page; the shared navigation displays the signed-in user's name and a logout control.
+
+Current behavior amendment: Step 04 changed the login destination from the landing page to `/profile` when the profile page was introduced. The redirect requirements and acceptance criteria below reflect that change. Other implementation instructions describe the original Step 03 scope; profile implementation remains covered by Steps 04 and 05, and expense CRUD remains a later feature.
 
 ## Depends on
 
 - Step 01: Database Setup (`specs/01-database-setup.md`), including the users table, hashed demo password, and `get_db()`, `init_db()`, and `seed_db()` helpers.
 - Step 02: Registration (`specs/02-registration.md`), including `create_user()`, normalized email addresses, Werkzeug password hashes, and registration tests.
-- The existing login template and shared layout. Database setup and registration are implemented in the current code despite the older descriptions in `AGENTS.md`; login POST handling and logout are not implemented.
+- The existing login template and shared layout. At the start of Step 03, database setup and registration were implemented; login POST handling and logout were the work introduced by this step.
 
 ## Routes
 
-- `POST /login` — validate credentials and establish a session, then redirect to the landing page — access level (`public`).
+- `POST /login` — validate credentials and establish a session, then redirect to the profile page — access level (`public`).
 - `POST /logout` — validate the logout form, clear the session, and redirect to the login page; also safely accept a valid anonymous form submission — access level (`public`).
 
-Add POST support to the existing `/login` handler and replace the existing GET-only `/logout` stub with POST-only behavior. No additional URL paths are required. Existing `GET /login` renders the form for anonymous visitors and redirects signed-in visitors to the landing page. `GET /logout` and `HEAD /logout` return HTTP 405 without changing the session.
+Add POST support to the existing `/login` handler and replace the existing GET-only `/logout` stub with POST-only behavior. No additional URL paths are required. Existing `GET /login` renders the form for anonymous visitors and redirects signed-in visitors to the profile page. `GET /logout` and `HEAD /logout` return HTTP 405 without changing the session.
 
 ## Database changes
 
@@ -65,8 +67,8 @@ Use Flask sessions, Werkzeug password verification, existing pytest packages, an
 - Match existing mixed-case emails, including non-ASCII letters, consistently with registration's Python `lower()` behavior. Do not rely solely on SQLite's default `LOWER()` or `NOCASE` for Unicode matching. If legacy data contains multiple case-equivalent accounts, reject the ambiguous login with the generic credential error instead of choosing an account arbitrarily.
 - Require a nonempty password, but do not trim, normalize, or apply the registration minimum length to it: the seeded demo password `demo123` must remain usable. Missing fields or malformed email return HTTP 400 with a clear form error; an unknown email or incorrect password returns HTTP 401 with the same message, “Invalid email or password.”
 - Preserve the submitted email through normal escaped Jinja values on form errors. Never repopulate or expose the password, and never use the `safe` filter on user data.
-- On successful login, clear previous session contents, set `user_id`, create a fresh CSRF token, and return HTTP 302 to `url_for('landing')`. Subsequent requests identify the same user. Failed anonymous login attempts never create authenticated state.
-- A signed-in visitor to `/login` is redirected to the landing page; POST requests must still pass CSRF validation before this redirect and must not silently switch accounts. Use the fixed landing destination and ignore any submitted `next` URL.
+- On successful login, clear previous session contents, set `user_id`, create a fresh CSRF token, and return HTTP 302 to `url_for('profile')`. Subsequent requests identify the same user. Failed anonymous login attempts never create authenticated state.
+- A signed-in visitor to `/login` is redirected to the profile page; POST requests must still pass CSRF validation before this redirect and must not silently switch accounts. Use the fixed profile destination and ignore any submitted `next` URL.
 - A valid logout POST clears the entire session and returns HTTP 302 to `url_for('login')`. It does not delete or modify users or expenses. A valid anonymous logout POST has the same redirect behavior; GET requests never log anyone out.
 - Use `url_for()` for new or touched internal links, actions, and redirects. Follow PEP 8 and existing naming conventions. Any JavaScript must remain vanilla JS; these forms must work without JavaScript.
 - Do not implement profile or expense stubs, password reset, registration auto-login, or additional authentication services in this step. Preserve the current registration behavior and schema.
@@ -78,7 +80,7 @@ Use Flask sessions, Werkzeug password verification, existing pytest packages, an
 
 - [ ] Starting the app with a configured environment secret succeeds; starting it without a secret or with an empty secret reports a clear configuration error.
 - [ ] Anonymous `GET /login` returns HTTP 200 with an email field, an empty password field, and a CSRF-protected POST form. Public pages display Sign in and Get started.
-- [ ] The seeded `demo@spendly.com` / `demo123` credentials and an account created through registration can each sign in, returning HTTP 302 to `/`.
+- [ ] The seeded `demo@spendly.com` / `demo123` credentials and an account created through registration can each sign in, returning HTTP 302 to `/profile`.
 - [ ] Following successful login displays the user's escaped name and a working logout control in the shared navigation. The same client remains signed in on later requests, while a separate client remains anonymous.
 - [ ] Surrounding whitespace and case variations in email authenticate the same account, including a preexisting mixed-case non-ASCII email. Ambiguous legacy email matches are rejected without authenticating either account.
 - [ ] Missing or empty fields and malformed emails return HTTP 400 with a visible error when browser validation is bypassed. Unknown emails and incorrect passwords return HTTP 401 with identical credential-error text and no authenticated session.
@@ -86,7 +88,7 @@ Use Flask sessions, Werkzeug password verification, existing pytest packages, an
 - [ ] Form errors retain escaped email text, leave the password input empty, and do not disclose the submitted password in the response.
 - [ ] Login clears preexisting session values and rotates the CSRF token. The resulting cookie contains the user ID and token without password hashes or personal profile data, has HttpOnly and SameSite=Lax attributes, and gains Secure when HTTPS configuration is enabled.
 - [ ] Missing, incorrect, or another client's CSRF token returns HTTP 400 for login and logout without changing authenticated identity. A pre-login token cannot be reused to log out after successful login.
-- [ ] Signed-in GET and valid POST requests to `/login` redirect to `/` without changing users; a supplied external `next` URL never controls the redirect destination.
+- [ ] Signed-in GET and valid POST requests to `/login` redirect to `/profile` without changing users; a supplied external `next` URL never controls the redirect destination.
 - [ ] A valid logout POST returns HTTP 302 to `/login`, clears authenticated session state, and restores anonymous navigation. A valid anonymous logout POST also redirects without error.
 - [ ] `GET /logout` and `HEAD /logout` return HTTP 405 and preserve an active session. The navigation submits logout with POST and remains keyboard accessible and visible at mobile widths.
 - [ ] A tampered session cookie, an invalid session user ID, and a session referencing a deleted user are treated as anonymous without an application error.
