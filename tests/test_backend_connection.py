@@ -153,3 +153,122 @@ def test_query_parameters_cannot_select_other_users(user_id):
     assert queries.get_summary_stats("1 OR 1=1")["transaction_count"] == 0
     assert queries.get_recent_transactions("1 OR 1=1") == []
     assert queries.get_category_breakdown("1 OR 1=1") == []
+
+
+@pytest.mark.parametrize("start,end,descriptions,total", [
+    ("2024-02-29", "2024-03-02", ["End", "Middle", "Start"], "9.00"),
+    ("2024-02-29", "2024-02-29", ["Start"], "2.00"),
+    ("2024-03-02", None, ["After", "End"], "9.00"),
+    (None, "2024-02-29", ["Start", "Before"], "3.00"),
+    (None, None, ["After", "End", "Middle", "Start", "Before"], "15.00"),
+    ("2050-01-01", "2050-12-31", [], "0.00"),
+])
+def test_inclusive_bounds_apply_to_every_section(user_id, start, end, descriptions, total):
+    rows = [
+        (1, "Food", "2024-02-28", "Before"),
+        (2, "Food", "2024-02-29", "Start"),
+        (3, "Food", "2024-03-01", "Middle"),
+        (4, "Food", "2024-03-02", "End"),
+        (5, "Food", "2099-01-01", "After"),
+    ]
+    replace_expenses(user_id, rows)
+    other_id = db.create_user("Other", "other@example.com", "secret123")
+    replace_expenses(other_id, rows)
+    bounds = {"start_date": start, "end_date": end}
+    assert queries.get_summary_stats(user_id, **bounds) == {
+        "total_spent": Decimal(total), "transaction_count": len(descriptions),
+        "top_category": "Food" if descriptions else "—",
+    }
+    assert [row["description"] for row in queries.get_recent_transactions(
+        user_id, **bounds,
+    )] == descriptions
+    assert queries.get_category_breakdown(user_id, **bounds) == ([
+        {"name": "Food", "amount": Decimal(total), "pct": 100},
+    ] if descriptions else [])
+
+
+def test_filtered_limit_order_and_full_aggregation(user_id):
+    rows = [(999, "Other", "2023-12-31", "Outside before")]
+    rows += [(2, "Food", "2024-01-01", "Row {}".format(n)) for n in range(11)]
+    rows += [(3, "Bills", "2024-01-02", "Newest match")]
+    rows += [(999, "Other", "2025-01-01", "Outside after")]
+    replace_expenses(user_id, rows)
+    bounds = {"start_date": "2024-01-01", "end_date": "2024-12-31"}
+    history = queries.get_recent_transactions(user_id, **bounds)
+    assert [row["description"] for row in history] == ["Newest match"] + [
+        "Row {}".format(n) for n in range(10, 1, -1)
+    ]
+    assert len(queries.get_recent_transactions(user_id, 20, **bounds)) == 12
+    assert len(queries.get_recent_transactions(user_id, limit=2, **bounds)) == 2
+    assert queries.get_recent_transactions(user_id, 0, **bounds) == []
+    for invalid in (-1, True, "10", 1.5):
+        with pytest.raises(ValueError):
+            queries.get_recent_transactions(user_id, invalid, **bounds)
+    assert queries.get_summary_stats(user_id, **bounds) == {
+        "total_spent": 25, "transaction_count": 12, "top_category": "Food",
+    }
+    assert queries.get_category_breakdown(user_id, **bounds) == [
+        {"name": "Food", "amount": 22, "pct": 88},
+        {"name": "Bills", "amount": 3, "pct": 12},
+    ]
+
+
+def test_filtered_rounding_ties_and_zero_totals(user_id):
+    replace_expenses(user_id, [
+        (1000, "Outside", "2023-01-01", None),
+        (0.105, "Zebra", "2024-01-01", None),
+        (0.195, "Zebra", "2024-01-02", None),
+        (0.31, "Alpha", "2024-01-03", None),
+        (0.31, "Beta", "2024-01-04", None),
+        (0, "Food", "2025-01-01", None),
+    ])
+    bounds = {"start_date": "2024-01-01", "end_date": "2024-12-31"}
+    assert queries.get_summary_stats(user_id, **bounds) == {
+        "total_spent": Decimal("0.93"), "transaction_count": 4, "top_category": "Alpha",
+    }
+    assert queries.get_category_breakdown(user_id, **bounds) == [
+        {"name": "Alpha", "amount": Decimal("0.31"), "pct": 34},
+        {"name": "Beta", "amount": Decimal("0.31"), "pct": 33},
+        {"name": "Zebra", "amount": Decimal("0.31"), "pct": 33},
+    ]
+    assert [row["amount"] for row in queries.get_recent_transactions(user_id, **bounds)] == [
+        Decimal("0.31"), Decimal("0.31"), Decimal("0.20"), Decimal("0.11"),
+    ]
+    assert queries.get_category_breakdown(user_id, start_date="2025-01-01") == [
+        {"name": "Food", "amount": 0, "pct": 0},
+    ]
+
+
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+def test_date_bounds_are_bound_parameters(user_id, field):
+    replace_expenses(user_id, [(1, "Food", "2024-01-01", None)])
+    # A literal containing SQL syntax must neither broaden the range nor execute.
+    value = "9999' OR 1=1 --" if field == "start_date" else "0000' OR 1=1 --"
+    bounds = {field: value}
+    assert queries.get_summary_stats(user_id, **bounds)["transaction_count"] == 0
+    assert queries.get_recent_transactions(user_id, **bounds) == []
+    assert queries.get_category_breakdown(user_id, **bounds) == []
+    assert queries.get_summary_stats(user_id)["transaction_count"] == 1
+
+
+def test_filtered_queries_keep_users_with_same_dates_isolated(user_id):
+    replace_expenses(user_id, [
+        (2, "Food", "2024-02-29", "Own boundary"),
+        (3, "Bills", "2024-03-01", "Own outside"),
+    ])
+    other_id = db.create_user("Other", "same-day@example.com", "secret123")
+    replace_expenses(other_id, [
+        (999, "Shopping", "2024-02-29", "Other boundary"),
+    ])
+    bounds = {"start_date": "2024-02-29", "end_date": "2024-02-29"}
+    assert queries.get_summary_stats(user_id, **bounds) == {
+        "total_spent": Decimal("2.00"), "transaction_count": 1,
+        "top_category": "Food",
+    }
+    assert [row["description"] for row in queries.get_recent_transactions(
+        user_id, **bounds,
+    )] == ["Own boundary"]
+    assert queries.get_category_breakdown(user_id, **bounds) == [
+        {"name": "Food", "amount": Decimal("2.00"), "pct": 100},
+    ]
+    assert queries.get_summary_stats(other_id, **bounds)["total_spent"] == 999

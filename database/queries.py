@@ -31,12 +31,26 @@ def get_user_by_id(user_id):
     }
 
 
-def _expense_totals(user_id):
+def _expense_filter(user_id, start_date=None, end_date=None):
+    """Build fixed SQL predicates with separately bound user/date values."""
+    predicates = ["user_id = ?"]
+    parameters = [user_id]
+    if start_date is not None:
+        predicates.append("date >= ?")
+        parameters.append(start_date)
+    if end_date is not None:
+        predicates.append("date <= ?")
+        parameters.append(end_date)
+    return " AND ".join(predicates), parameters
+
+
+def _expense_totals(user_id, start_date=None, end_date=None):
     """Aggregate one user's rows with consistent cent rounding."""
+    predicate, parameters = _expense_filter(user_id, start_date, end_date)
     with closing(get_db()) as connection:
         rows = connection.execute(
-            "SELECT category, amount FROM expenses WHERE user_id = ?",
-            (user_id,),
+            "SELECT category, amount FROM expenses WHERE " + predicate,
+            parameters,
         ).fetchall()
     totals = {}
     for row in rows:
@@ -51,9 +65,9 @@ def _expense_totals(user_id):
     return len(rows), sum(totals.values(), Decimal("0.00")), categories
 
 
-def get_summary_stats(user_id):
-    """Return all-time spending, count, and the highest-spending category."""
-    count, total, categories = _expense_totals(user_id)
+def get_summary_stats(user_id, start_date=None, end_date=None):
+    """Return spending, count, and top category within optional ISO bounds."""
+    count, total, categories = _expense_totals(user_id, start_date, end_date)
     return {
         "total_spent": total,
         "transaction_count": count,
@@ -61,22 +75,23 @@ def get_summary_stats(user_id):
     }
 
 
-def get_recent_transactions(user_id, limit=10):
+def get_recent_transactions(user_id, limit=10, start_date=None, end_date=None):
     """Return newest expenses first, resolving equal dates by descending ID."""
     if type(limit) is not int or limit < 0:
         raise ValueError("limit must be a nonnegative integer")
+    predicate, parameters = _expense_filter(user_id, start_date, end_date)
     with closing(get_db()) as connection:
         rows = connection.execute(
             "SELECT date, description, category, amount FROM expenses "
-            "WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT ?",
-            (user_id, limit),
+            "WHERE " + predicate + " ORDER BY date DESC, id DESC LIMIT ?",
+            parameters + [limit],
         ).fetchall()
     return [dict(row, amount=_money(row["amount"])) for row in rows]
 
 
-def get_category_breakdown(user_id):
-    """Return ordered category totals and integer shares of all-time spending."""
-    _, total, categories = _expense_totals(user_id)
+def get_category_breakdown(user_id, start_date=None, end_date=None):
+    """Return category totals and shares within optional ISO date bounds."""
+    _, total, categories = _expense_totals(user_id, start_date, end_date)
     for category in categories:
         category["pct"] = (
             int((category["amount"] * 100 / total).quantize(

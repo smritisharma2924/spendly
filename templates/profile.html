@@ -50,9 +50,53 @@
         <section class="profile-spending" aria-labelledby="spending-title">
             <header class="profile-spending-header">
                 <h2 id="spending-title">Spending overview</h2>
-                <p>All-time spending across your recorded expenses.</p>
             </header>
 
+            <form id="profile-filter" class="profile-filter" method="GET" action="{{ url_for('profile') }}"
+                  aria-label="Filter spending by date" aria-describedby="profile-filter-help">
+                <p id="profile-filter-help" class="profile-filter-sr-only">Leave either date blank for an open-ended range. Quick ranges cover complete calendar months before the current month. Clear filter restores all-time spending.</p>
+                <div class="profile-filter-controls">
+                    {% for field, label in [('start_date', 'Start date'), ('end_date', 'End date')] %}
+                    {% if not loop.first %}<span class="profile-filter-separator" aria-hidden="true">to</span>{% endif %}
+                    <div class="profile-filter-field">
+                        <label for="{{ field }}" class="profile-filter-sr-only">{{ label }}</label>
+                        <input type="date" class="form-input" id="{{ field }}" name="{{ field }}"
+                               value="{{ date_filter[field] or '' }}"
+                               {% if field in filter_errors %}aria-invalid="true" aria-describedby="{{ field }}-error"{% endif %}>
+                    </div>
+                    {% endfor %}
+                    <button class="profile-filter-apply" type="submit">Apply filter</button>
+                    <a class="profile-filter-clear" href="{{ url_for('profile') }}">Clear filter</a>
+                </div>
+                <div class="profile-filter-presets" role="group" aria-label="Quick date ranges">
+                    {% for preset in date_presets %}
+                    <a class="profile-filter-preset"
+                       href="{{ url_for('profile', start_date=preset.start_date, end_date=preset.end_date) }}"
+                       {% if not filter_errors and date_filter.start_date == preset.start_date and date_filter.end_date == preset.end_date %}aria-current="true"{% endif %}>{{ preset.label }}</a>
+                    {% endfor %}
+                </div>
+                {% if filter_errors %}
+                <div class="profile-filter-feedback">
+                    <p class="profile-filter-errors" role="alert">Please correct the date filter.</p>
+                    {% for field, error in filter_errors.items() %}
+                    <p class="profile-filter-errors" id="{{ field }}-error">{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </form>
+
+            {% if not filter_errors %}
+            <p class="profile-active-range" id="profile-active-range">
+                {% if date_filter.start_date and date_filter.end_date %}
+                Spending from {{ date_filter.start_date }} through {{ date_filter.end_date }} (inclusive).
+                {% elif date_filter.start_date %}
+                Spending on or after {{ date_filter.start_date }}.
+                {% elif date_filter.end_date %}
+                Spending on or before {{ date_filter.end_date }}.
+                {% else %}
+                All-time spending across your recorded expenses.
+                {% endif %}
+            </p>
             <dl class="profile-stats" id="profile-summary">
                 {% for stat in dashboard.summary %}
                 <div class="profile-stat">
@@ -73,7 +117,7 @@
                         <span class="profile-icon" aria-hidden="true"><i data-lucide="credit-card"></i></span>
                         Latest 10 transactions
                     </h3>
-                    <p class="profile-table-hint" id="transaction-scroll-hint">Scroll horizontally to see all columns on smaller screens.</p>
+                    <p class="profile-table-hint" id="transaction-scroll-hint">Showing at most ten{% if is_filtered %} matching{% endif %} expenses. Scroll horizontally to see all columns on smaller screens.</p>
                     <div class="profile-table-scroll" role="region" tabindex="0"
                          aria-labelledby="transactions-title" aria-describedby="transaction-scroll-hint">
                         <table id="profile-transactions">
@@ -95,7 +139,7 @@
                                     <td class="profile-amount">₹{{ '{:,.2f}'.format(transaction.amount) }}</td>
                                 </tr>
                                 {% else %}
-                                <tr><td colspan="4" class="profile-empty">No expenses recorded yet.</td></tr>
+                                <tr><td colspan="4" class="profile-empty">{{ 'No expenses in this date range.' if is_filtered else 'No expenses recorded yet.' }}</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -114,11 +158,12 @@
                             <span class="profile-category-total">₹{{ '{:,.2f}'.format(category.total) }} <span class="profile-category-percent">({{ category.pct }}%)</span></span>
                         </li>
                         {% else %}
-                        <li class="profile-empty">No category spending yet.</li>
+                        <li class="profile-empty">{{ 'No category spending in this date range.' if is_filtered else 'No category spending yet.' }}</li>
                         {% endfor %}
                     </ul>
                 </section>
             </div>
+            {% endif %}
         </section>
     </div>
 </section>

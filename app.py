@@ -1,7 +1,8 @@
 import hmac
 import os
+import re
 import secrets
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from flask import (
     Flask, abort, flash, g, redirect, render_template, request, session, url_for,
@@ -203,11 +204,12 @@ def profile_currency(amount):
     return "₹{:,.2f}".format(amount)
 
 
-# Transaction history — owned by implementation subagent 1.
-def build_profile_transactions(user_id):
+def build_profile_transactions(user_id, start_date=None, end_date=None):
     """Prepare the latest transaction rows for the profile template."""
     transactions = []
-    for transaction in profile_queries.get_recent_transactions(user_id):
+    for transaction in profile_queries.get_recent_transactions(
+        user_id, start_date=start_date, end_date=end_date,
+    ):
         transaction_date = profile_date(transaction["date"])
         description = transaction["description"]
         transactions.append({
@@ -226,10 +228,11 @@ def build_profile_transactions(user_id):
     return transactions
 
 
-# Summary stats — owned by implementation subagent 2.
-def build_profile_summary(user_id):
+def build_profile_summary(user_id, start_date=None, end_date=None):
     """Prepare the three spending overview cards."""
-    summary = profile_queries.get_summary_stats(user_id)
+    summary = profile_queries.get_summary_stats(
+        user_id, start_date=start_date, end_date=end_date,
+    )
     return [
         {"label": "Total spent", "value": profile_currency(summary["total_spent"])},
         {"label": "Transactions", "value": str(summary["transaction_count"])},
@@ -237,8 +240,7 @@ def build_profile_summary(user_id):
     ]
 
 
-# Category breakdown — owned by implementation subagent 3.
-def build_profile_categories(user_id):
+def build_profile_categories(user_id, start_date=None, end_date=None):
     """Prepare category totals and percentages for the profile template."""
     return [
         {
@@ -247,8 +249,50 @@ def build_profile_categories(user_id):
             "pct": category["pct"],
             "category_class": profile_category_class(category["name"]),
         }
-        for category in profile_queries.get_category_breakdown(user_id)
+        for category in profile_queries.get_category_breakdown(
+            user_id, start_date=start_date, end_date=end_date,
+        )
     ]
+
+
+def profile_date_presets(today=None):
+    """Return ranges for complete calendar months before the current month."""
+    today = today if today is not None else date.today()
+    first_day = today.replace(day=1)
+    end_date = (first_day - timedelta(days=1)).isoformat()
+    presets = []
+    for label, months in (("Last Month", 1), ("Last 3 Months", 3),
+                          ("Last 6 Months", 6)):
+        month_index = first_day.year * 12 + first_day.month - 1 - months
+        year, month = divmod(month_index, 12)
+        presets.append({
+            "label": label,
+            "start_date": date(year, month + 1, 1).isoformat(),
+            "end_date": end_date,
+        })
+    return presets
+
+
+def validate_profile_dates(parameters):
+    """Return valid ISO bounds and field errors without normalizing bad input."""
+    bounds = {"start_date": None, "end_date": None}
+    errors = {}
+    for field, label in (("start_date", "Start date"), ("end_date", "End date")):
+        value = parameters.get(field, "")
+        if not value:
+            continue
+        try:
+            if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+                raise ValueError
+            date(*map(int, value.split("-")))
+        except ValueError:
+            errors[field] = label + " must be a real date in YYYY-MM-DD format."
+        else:
+            bounds[field] = value
+    if (bounds["start_date"] and bounds["end_date"]
+            and bounds["start_date"] > bounds["end_date"]):
+        errors["end_date"] = "End date must be on or after start date."
+    return bounds, errors
 
 
 @app.route("/profile")
@@ -273,13 +317,19 @@ def profile():
         initials=initials,
         member_since_iso=joined.isoformat() if joined else None,
     )
-    dashboard = {
-        "user": user,
-        "summary": build_profile_summary(user_id),
-        "transactions": build_profile_transactions(user_id),
-        "categories": build_profile_categories(user_id),
-    }
-    return render_template("profile.html", dashboard=dashboard)
+    bounds, filter_errors = validate_profile_dates(request.args)
+    dashboard = {"user": user}
+    if not filter_errors:
+        dashboard.update(
+            summary=build_profile_summary(user_id, **bounds),
+            transactions=build_profile_transactions(user_id, **bounds),
+            categories=build_profile_categories(user_id, **bounds),
+        )
+    return render_template(
+        "profile.html", dashboard=dashboard, date_filter=bounds,
+        filter_errors=filter_errors, is_filtered=any(bounds.values()),
+        date_presets=profile_date_presets(),
+    ), 400 if filter_errors else 200
 
 
 # ------------------------------------------------------------------ #
