@@ -3,7 +3,7 @@
 import importlib
 import re
 from contextlib import closing
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from html.parser import HTMLParser
 from pathlib import Path
@@ -35,23 +35,33 @@ def client(flask_app):
 
 
 class PageParser(HTMLParser):
-    def __init__(self, response, section_id=None):
+    def __init__(self, response, section_id=None, section_class=None):
         super().__init__()
         self.elements = []
         self.nodes = []
         self.stack = []
         self.section_id = section_id
+        self.section_class = section_class
         self.feed(response.get_data(as_text=True))
+
+    def matches_section(self, attributes):
+        return (
+            self.section_id is not None
+            and attributes.get("id") == self.section_id
+        ) or (
+            self.section_class is not None
+            and self.section_class in attributes.get("class", "").split()
+        )
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
         node = {"tag": tag, "attrs": attributes, "text": ""}
         within_section = any(
-            parent["attrs"].get("id") == self.section_id
+            self.matches_section(parent["attrs"])
             for parent in self.stack
         )
-        if (self.section_id is None
-                or attributes.get("id") == self.section_id or within_section):
+        if ((self.section_id is None and self.section_class is None)
+                or self.matches_section(attributes) or within_section):
             self.elements.append((tag, attributes))
             self.nodes.append(node)
         if tag not in ("meta", "link", "input", "img", "br", "hr"):
@@ -153,12 +163,15 @@ def test_demo_profile_semantics_and_read_only_requests(client):
     assert account.attributes("time") == [{
         "id": "profile-member-since", "datetime": user["created_at"][:10],
     }]
-    assert page.attributes("form") == [{
+    logout_page = PageParser(response, section_class="nav-logout")
+    assert logout_page.attributes("form") == [{
         "class": "nav-logout", "method": "POST", "action": "/logout",
     }]
-    assert [attrs["name"] for attrs in page.attributes("input")] == [
+    assert [attrs["name"] for attrs in logout_page.attributes("input")] == [
         "csrf_token",
     ]
+    assert logout_page.csrf_token()
+    assert len(page.attributes("form")) == 2
     stylesheet = next(attrs["href"] for attrs in page.attributes("link")
                       if attrs.get("href", "").endswith("css/profile.css"))
     assert client.get(stylesheet).status_code == 200
@@ -481,7 +494,10 @@ def test_expense_content_is_escaped_with_safe_category_class(client):
                if "profile-category" in attrs.get("class", "").split())
 
 
-def test_route_history_limit_does_not_limit_summary(client):
+@pytest.mark.parametrize("bounds", [
+    {}, {"start_date": "2020-01-01", "end_date": "2020-01-01"},
+])
+def test_route_history_limit_does_not_limit_summary(client, bounds):
     login(client)
     user_id = db.get_user_by_email("demo@spendly.com")["id"]
     with closing(db.get_db()) as connection:
@@ -493,22 +509,373 @@ def test_route_history_limit_does_not_limit_summary(client):
                 [(user_id, 10, "Food", "2020-01-01", "Expense {}".format(n))
                  for n in range(12)],
             )
-    response = client.get("/profile")
+    response = client.get("/profile", query_string=bounds)
     assert PageParser(response, "profile-summary").texts("dd") == ["₹120.00", "12", "Food"]
     assert len(PageParser(response, "profile-transactions").texts("td")) == 40
+    assert PageParser(response, "profile-transactions").texts("td")[1::4] == [
+        "Expense {}".format(n) for n in range(11, 1, -1)
+    ]
+    hint = "at most ten matching expenses" if bounds else "at most ten expenses"
+    assert hint in response.get_data(as_text=True)
     assert "₹120.00" in PageParser(response, "profile-categories").texts("li")[0]
     assert "(100%)" in PageParser(response, "profile-categories").texts("li")[0]
 
 
-def test_profile_does_not_mask_database_failure(client, monkeypatch):
+@pytest.mark.parametrize("query_string", [{}, {"start_date": "2026-01-01"}])
+@pytest.mark.parametrize("helper", [
+    "get_summary_stats", "get_recent_transactions", "get_category_breakdown",
+])
+def test_profile_does_not_mask_database_failure(
+    client, monkeypatch, query_string, helper,
+):
     import sqlite3
     from database import queries
 
     login(client)
 
-    def unavailable(user_id):
+    def unavailable(user_id, start_date=None, end_date=None):
         raise sqlite3.OperationalError("database unavailable")
 
-    monkeypatch.setattr(queries, "get_summary_stats", unavailable)
+    monkeypatch.setattr(queries, helper, unavailable)
     with pytest.raises(sqlite3.OperationalError, match="database unavailable"):
-        client.get("/profile")
+        client.get("/profile", query_string=query_string)
+
+
+@pytest.fixture
+def dated_expenses(client):
+    login(client)
+    user_id = db.get_user_by_email("demo@spendly.com")["id"]
+    rows = [
+        (1, "Other", "2024-02-28", "Before"),
+        (2, "Food", "2024-02-29", "Start"),
+        (3, "Food", "2024-03-01", "Middle"),
+        (4, "Bills", "2024-03-02", "End"),
+        (5, "Other", "2099-01-01", "Future"),
+    ]
+    with closing(db.get_db()) as connection:
+        with connection:
+            connection.execute("DELETE FROM expenses WHERE user_id = ?", (user_id,))
+            connection.executemany(
+                "INSERT INTO expenses (user_id, amount, category, date, "
+                "description) VALUES (?, ?, ?, ?, ?)",
+                [(user_id,) + row for row in rows],
+            )
+    return user_id
+
+
+@pytest.mark.parametrize("bounds,expected,total,top", [
+    ({}, ["Future", "End", "Middle", "Start", "Before"], "15.00", "Other"),
+    ({"start_date": "", "end_date": ""},
+     ["Future", "End", "Middle", "Start", "Before"], "15.00", "Other"),
+    ({"start_date": "2024-02-29", "end_date": "2024-03-02"},
+     ["End", "Middle", "Start"], "9.00", "Food"),
+    ({"start_date": "2024-02-29", "end_date": "2024-02-29"},
+     ["Start"], "2.00", "Food"),
+    ({"start_date": "2024-03-02"}, ["Future", "End"], "9.00", "Other"),
+    ({"end_date": "2024-02-29"}, ["Start", "Before"], "3.00", "Food"),
+    ({"start_date": "", "end_date": "2024-02-29"},
+     ["Start", "Before"], "3.00", "Food"),
+    ({"start_date": "2099-01-01", "end_date": ""}, ["Future"], "5.00", "Other"),
+])
+def test_profile_date_ranges(client, dated_expenses, bounds, expected, total, top):
+    baseline = snapshot()
+    account = PageParser(client.get("/profile"), "profile-account-fields").nodes
+    response = client.get("/profile", query_string=bounds)
+    assert response.status_code == 200
+    assert PageParser(response, "profile-summary").texts("dd") == [
+        "₹" + total, str(len(expected)), top,
+    ]
+    assert PageParser(response, "profile-transactions").texts("td")[1::4] == expected
+    assert PageParser(response, "profile-account-fields").nodes == account
+    inputs = PageParser(response, "profile-filter").attributes("input")
+    assert {item["name"]: item["value"] for item in inputs} == {
+        name: bounds.get(name, "") for name in ("start_date", "end_date")
+    }
+    categories = PageParser(response, "profile-categories").texts("li")
+    assert sum(Decimal(re.search(r"₹([\d.]+)", row).group(1))
+               for row in categories) == Decimal(total)
+    assert sum(int(re.search(r"\((\d+)%\)", row).group(1))
+               for row in categories) == 100
+    range_text = PageParser(response, "profile-active-range").texts("p")[0]
+    for value in bounds.values():
+        if value:
+            assert value in range_text
+    assert client.get(response.request.url).data == response.data
+    assert snapshot() == baseline
+
+
+def test_valid_bounds_reach_all_spending_helpers_unchanged(
+    client, dated_expenses, monkeypatch,
+):
+    from database import queries
+
+    observed = {}
+    originals = {
+        name: getattr(queries, name)
+        for name in ("get_summary_stats", "get_recent_transactions",
+                     "get_category_breakdown")
+    }
+
+    def recording_helper(name):
+        def call(user_id, *args, **kwargs):
+            observed[name] = (user_id, args, kwargs)
+            return originals[name](user_id, *args, **kwargs)
+        return call
+
+    for name in originals:
+        monkeypatch.setattr(queries, name, recording_helper(name))
+    response = client.get("/profile?start_date=2024-02-29&end_date=2024-03-02")
+    assert response.status_code == 200
+    assert observed == {
+        name: (dated_expenses, (), {
+            "start_date": "2024-02-29", "end_date": "2024-03-02",
+        }) for name in originals
+    }
+
+
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+@pytest.mark.parametrize("invalid", [
+    "garbage", "2026-2-01", "2026-02-1", "2026-02-29", "2024-02-30",
+    "2026-13-01", "0000-01-01", "2026-01-01T00:00:00",
+    " 2026-01-01", "2026-01-01 ", "2026-01-01\n", "２０２６-01-01",
+    '\"><img src=x onerror=alert(1)>', "2026-01-01' OR 1=1 --",
+])
+def test_invalid_dates_skip_spending_queries(client, monkeypatch, field, invalid):
+    from database import queries
+
+    login(client)
+    baseline = snapshot()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid filters must not query spending")
+
+    for helper in ("get_summary_stats", "get_recent_transactions",
+                   "get_category_breakdown"):
+        monkeypatch.setattr(queries, helper, unexpected)
+    other = "end_date" if field == "start_date" else "start_date"
+    response = client.get("/profile", query_string={field: invalid, other: "2026-01-01"})
+    assert response.status_code == 400
+    page = PageParser(response)
+    assert page.attributes("img") == []
+    assert PageParser(response, "profile-account-fields").texts("dd")[0] == "Demo User"
+    for section in ("profile-summary", "profile-transactions", "profile-categories"):
+        assert PageParser(response, section).nodes == []
+    inputs = {item["name"]: item for item in
+              PageParser(response, "profile-filter").attributes("input")}
+    assert inputs[field]["value"] == ""
+    assert inputs[other]["value"] == "2026-01-01"
+    assert inputs[field]["aria-invalid"] == "true"
+    error_id = inputs[field]["aria-describedby"]
+    assert "YYYY-MM-DD" in PageParser(response, error_id).texts("p")[0]
+    assert any(attrs.get("role") == "alert" for attrs in page.attributes("p"))
+    assert snapshot() == baseline
+
+
+def test_reversed_range_retains_dates_and_skips_queries(client, monkeypatch):
+    from database import queries
+
+    login(client)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Reversed ranges must not query spending")
+
+    for helper in ("get_summary_stats", "get_recent_transactions",
+                   "get_category_breakdown"):
+        monkeypatch.setattr(queries, helper, unexpected)
+    response = client.get("/profile?start_date=2026-02-01&end_date=2026-01-01")
+    assert response.status_code == 400
+    assert [item["value"] for item in PageParser(
+        response, "profile-filter",
+    ).attributes("input")] == ["2026-02-01", "2026-01-01"]
+    assert b"End date must be on or after start date." in response.data
+    assert PageParser(response, "profile-summary").nodes == []
+
+
+def test_filter_form_empty_range_clear_and_logout(client, dated_expenses):
+    baseline = snapshot()
+    response = client.get("/profile?start_date=2050-01-01&end_date=2050-12-31")
+    assert response.status_code == 200
+    assert PageParser(response, "profile-summary").texts("dd") == ["₹0.00", "0", "—"]
+    assert PageParser(response, "profile-transactions").texts("td") == [
+        "No expenses in this date range.",
+    ]
+    assert PageParser(response, "profile-categories").texts("li") == [
+        "No category spending in this date range.",
+    ]
+    form = PageParser(response, "profile-filter")
+    assert form.attributes("form")[0]["method"] == "GET"
+    assert form.attributes("form")[0]["action"] == "/profile"
+    assert form.attributes("input") and all(
+        item["name"] != "csrf_token" for item in form.attributes("input")
+    )
+    assert form.texts("label") == ["Start date", "End date"]
+    assert [attrs["for"] for attrs in form.attributes("label")] == [
+        "start_date", "end_date",
+    ]
+    assert all(item["type"] == "date" and item["id"] == item["name"]
+               and "required" not in item for item in form.attributes("input"))
+    assert len(form.attributes("input")) == 2
+    assert any(button.get("type") == "submit" and label == "Apply filter"
+               for button, label in zip(form.attributes("button"), form.texts("button")))
+    assert any(label == "Clear filter" and attrs.get("href") == "/profile"
+               for attrs, label in zip(form.attributes("a"), form.texts("a")))
+    clear = form.attributes("a")[0]["href"]
+    assert clear == "/profile"
+    assert PageParser(client.get(clear), "profile-summary").texts("dd")[0] == "₹15.00"
+    with client.session_transaction() as current:
+        assert "start_date" not in current and "end_date" not in current
+    assert client.post("/logout").status_code == 400
+    token = PageParser(response).csrf_token()
+    assert client.post("/logout", data={"csrf_token": token}).status_code == 302
+    assert snapshot() == baseline
+
+
+@pytest.mark.parametrize("identity", [None, "invalid", 999999])
+def test_authentication_precedes_invalid_filter(client, identity):
+    if identity is not None:
+        with client.session_transaction() as current:
+            current["user_id"] = identity
+    response = client.get("/profile?start_date=invalid")
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+
+
+def test_filtered_results_ignore_other_user_id(client, flask_app, dated_expenses):
+    other_id = db.create_user("Other", "filtered-other@example.com", "secret123")
+    with closing(db.get_db()) as connection:
+        with connection:
+            connection.execute(
+                "INSERT INTO expenses (user_id, amount, category, date, description) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (other_id, 999, "Other", "2024-02-29", "Private expense"),
+            )
+    response = client.get("/profile", query_string={
+        "start_date": "2024-02-29", "end_date": "2024-02-29", "user_id": other_id,
+    })
+    assert PageParser(response, "profile-summary").texts("dd") == ["₹2.00", "1", "Food"]
+    assert b"Private expense" not in response.data
+    other_client = flask_app.test_client()
+    login(other_client, "filtered-other@example.com", "secret123")
+    response = other_client.get("/profile", query_string={
+        "start_date": "2024-02-29", "end_date": "2024-02-29", "user_id": dated_expenses,
+    })
+    assert PageParser(response, "profile-summary").texts("dd") == ["₹999.00", "1", "Other"]
+
+
+@pytest.mark.parametrize("today,expected", [
+    (date(2026, 10, 4), [
+        ("Last Month", "2026-09-01", "2026-09-30"),
+        ("Last 3 Months", "2026-07-01", "2026-09-30"),
+        ("Last 6 Months", "2026-04-01", "2026-09-30"),
+    ]),
+    (date(2026, 1, 15), [
+        ("Last Month", "2025-12-01", "2025-12-31"),
+        ("Last 3 Months", "2025-10-01", "2025-12-31"),
+        ("Last 6 Months", "2025-07-01", "2025-12-31"),
+    ]),
+    (date(2024, 3, 1), [
+        ("Last Month", "2024-02-01", "2024-02-29"),
+        ("Last 3 Months", "2023-12-01", "2024-02-29"),
+        ("Last 6 Months", "2023-09-01", "2024-02-29"),
+    ]),
+])
+def test_presets_cover_previous_complete_months(flask_app, today, expected):
+    from app import profile_date_presets
+
+    assert [
+        (item["label"], item["start_date"], item["end_date"])
+        for item in profile_date_presets(today)
+    ] == expected
+
+
+def test_preset_links_filter_dashboard_and_clear_without_writes(
+    client, monkeypatch,
+):
+    import app as application
+
+    login(client)
+    user_id = db.get_user_by_email("demo@spendly.com")["id"]
+    rows = [
+        (20, "Other", "2026-03-31", "Before six months"),
+        (1, "Food", "2026-04-01", "Six month start"),
+        (2, "Food", "2026-06-30", "Before three months"),
+        (3, "Bills", "2026-07-01", "Three month start"),
+        (4, "Bills", "2026-08-31", "Before last month"),
+        (5, "Shopping", "2026-09-01", "Last month start"),
+        (6, "Shopping", "2026-09-30", "Last month end"),
+        (30, "Other", "2026-10-01", "Current month"),
+    ]
+    with closing(db.get_db()) as connection:
+        with connection:
+            connection.execute("DELETE FROM expenses WHERE user_id = ?", (user_id,))
+            connection.executemany(
+                "INSERT INTO expenses (user_id, amount, category, date, "
+                "description) VALUES (?, ?, ?, ?, ?)",
+                [(user_id,) + row for row in rows],
+            )
+    expected_ranges = [
+        ("Last Month", "2026-09-01", "2026-09-30", "₹11.00", "2",
+         ["Last month end", "Last month start"]),
+        ("Last 3 Months", "2026-07-01", "2026-09-30", "₹18.00", "4",
+         ["Last month end", "Last month start", "Before last month",
+          "Three month start"]),
+        ("Last 6 Months", "2026-04-01", "2026-09-30", "₹21.00", "6",
+         ["Last month end", "Last month start", "Before last month",
+          "Three month start", "Before three months", "Six month start"]),
+    ]
+    monkeypatch.setattr(application, "profile_date_presets", lambda: [
+        {"label": label, "start_date": start, "end_date": end}
+        for label, start, end, _, _, _ in expected_ranges
+    ])
+    baseline = snapshot()
+    initial = client.get("/profile")
+    assert initial.status_code == 200
+    links = PageParser(initial, "profile-filter").attributes("a")
+    assert PageParser(initial, "profile-filter").texts("a") == [
+        "Clear filter", "Last Month", "Last 3 Months", "Last 6 Months",
+    ]
+    assert all(link.get("aria-current") is None for link in links)
+    assert PageParser(initial, "profile-summary").texts("dd") == [
+        "₹71.00", "8", "Other",
+    ]
+    account = PageParser(initial, "profile-account-fields").nodes
+    for index, (_, start, end, total, count, descriptions) in enumerate(
+        expected_ranges, start=1,
+    ):
+        assert links[index]["href"] == (
+            "/profile?start_date={}&end_date={}".format(start, end)
+        )
+        response = client.get(links[index]["href"])
+        assert response.status_code == 200
+        form = PageParser(response, "profile-filter")
+        assert [item["value"] for item in form.attributes("input")] == [start, end]
+        assert [item.get("aria-current") for item in form.attributes("a")] == [
+            "true" if position == index else None for position in range(4)
+        ]
+        assert PageParser(response, "profile-summary").texts("dd") == [
+            total, count, "Shopping",
+        ]
+        assert PageParser(response, "profile-account-fields").nodes == account
+        assert PageParser(response, "profile-transactions").texts("td")[1::4] == (
+            descriptions
+        )
+        assert sum(Decimal(re.search(r"₹([\d.]+)", row).group(1)) for row in
+                   PageParser(response, "profile-categories").texts("li")) == (
+            Decimal(total.lstrip("₹"))
+        )
+    for path in (
+        "/profile?start_date=2026-09-02&end_date=2026-09-30",
+        "/profile?start_date=invalid",
+    ):
+        assert all(link.get("aria-current") is None for link in PageParser(
+            client.get(path), "profile-filter",
+        ).attributes("a"))
+    cleared = client.get(links[0]["href"])
+    assert cleared.request.query_string == b""
+    assert PageParser(cleared, "profile-summary").texts("dd") == [
+        "₹71.00", "8", "Other",
+    ]
+    assert all(link.get("aria-current") is None for link in PageParser(
+        cleared, "profile-filter",
+    ).attributes("a"))
+    assert snapshot() == baseline
