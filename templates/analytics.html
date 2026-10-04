@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics — Spendly{% endblock %}
+{% block body_class %}analytics-page{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analytics.css') }}">
+{% endblock %}
+
+{% block brand %}
+<span class="analytics-brand-mark" aria-hidden="true">
+    <img src="{{ url_for('static', filename='images/analytics/wallet-cards.svg') }}" alt="">
+</span>
+<span class="brand-name">Spendly</span>
+{% endblock %}
+
+{% block nav_status %}
+<p class="analytics-availability">
+    <img src="{{ url_for('static', filename='images/analytics/availability-dot.svg') }}" alt="">
+    Building the next view of your money
+</p>
+{% endblock %}
+
+{% block content %}
+<div class="analytics-ambient" aria-hidden="true">
+    <img class="analytics-ambient-top" src="{{ url_for('static', filename='images/analytics/ambient-top.svg') }}" alt="">
+    <img class="analytics-ambient-bottom" src="{{ url_for('static', filename='images/analytics/ambient-bottom.svg') }}" alt="">
+</div>
+<section class="analytics-section" aria-labelledby="analytics-title">
+    <div class="analytics-card">
+        <div class="analytics-message">
+            <span class="analytics-feature-icon" aria-hidden="true">
+                <img src="{{ url_for('static', filename='images/analytics/clock.svg') }}" alt="">
+            </span>
+            <p class="analytics-badge">
+                <img src="{{ url_for('static', filename='images/analytics/status-dot.svg') }}" alt="">
+                Coming soon
+            </p>
+            <div class="analytics-copy">
+                <h1 id="analytics-title">Advanced Analytics</h1>
+                <p class="analytics-description">Powerful insights and visualizations are on the way, designed to help you understand spending patterns and plan with confidence.</p>
+                <p class="analytics-features">Cash-flow trends &nbsp;·&nbsp; Smart forecasts &nbsp;·&nbsp; Category insights</p>
+            </div>
+        </div>
+        <div class="analytics-launch">
+            <div class="analytics-progress-labels">
+                <span id="analytics-progress-label">Launch readiness</span>
+                <strong>72%</strong>
+            </div>
+            {# Static launch status from the coming-soon design, not account data. #}
+            <div class="analytics-progress" role="progressbar" aria-labelledby="analytics-progress-label"
+                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="72">
+                <span class="analytics-progress-fill"></span>
+            </div>
+            <p class="analytics-progress-note">Private beta is being refined · Early access opens this winter</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block footer %}
+<footer class="analytics-footer">
+    <p>@ spendly 2026</p>
+    <div class="analytics-footer-links">
+        <a href="{{ url_for('terms') }}">
+            <img src="{{ url_for('static', filename='images/analytics/shield-check.svg') }}" alt="">
+            Terms and Conditions
+        </a>
+        <a href="{{ url_for('privacy') }}">Privacy Policy</a>
+    </div>
+</footer>
+{% endblock %}

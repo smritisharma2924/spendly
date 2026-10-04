@@ -10,16 +10,20 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
     <nav class="navbar">
         <div class="nav-inner{% if g.user %} nav-inner-authenticated{% endif %}">
             <a href="{{ url_for('landing') }}" class="nav-brand">
+                {% block brand %}
                 <span class="brand-icon">◈</span>
                 <span class="brand-name">Spendly</span>
+                {% endblock %}
             </a>
             <div class="nav-links">
                 {% if g.user %}
+                <a href="{{ url_for('analytics') }}" class="nav-analytics"
+                   {% if request.endpoint == 'analytics' %}aria-current="page"{% endif %}>Analytics</a>
                 <a href="{{ url_for('profile') }}" class="nav-profile"
                    title="{{ g.user['name'] }}"
                    aria-label="{% if g.user['name'].strip() %}View profile for {{ g.user['name'] }}{% else %}Your profile{% endif %}"
@@ -35,6 +39,7 @@
                 <a href="{{ url_for('register') }}" class="nav-cta">Get started</a>
                 {% endif %}
             </div>
+            {% block nav_status %}{% endblock %}
         </div>
     </nav>
 
@@ -42,6 +47,7 @@
         {% block content %}{% endblock %}
     </main>
 
+    {% block footer %}
     <footer class="footer">
         <div class="footer-inner">
             <span class="brand-icon">◈</span>
@@ -51,6 +57,7 @@
             <a href="{{ url_for('privacy') }}">Privacy Policy</a>
         </div>
     </footer>
+    {% endblock %}
 
     {% if request.endpoint == 'profile' %}
     <script defer src="https://unpkg.com/lucide@0.510.0/dist/umd/lucide.min.js"></script>

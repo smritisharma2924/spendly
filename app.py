@@ -295,6 +295,13 @@ def validate_profile_dates(parameters):
     return bounds, errors
 
 
+@app.route("/analytics")
+def analytics():
+    if g.user is None:
+        return redirect(url_for("login"))
+    return render_template("analytics.html")
+
+
 @app.route("/profile")
 def profile():
     if g.user is None:
