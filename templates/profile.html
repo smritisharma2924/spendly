@@ -50,7 +50,12 @@
         <section class="profile-spending" aria-labelledby="spending-title">
             <header class="profile-spending-header">
                 <h2 id="spending-title">Spending overview</h2>
+                <a class="profile-add-expense" href="{{ url_for('add_expense') }}">Add expense</a>
             </header>
+
+            {% for message in get_flashed_messages(category_filter=['success']) %}
+            <p class="profile-success" role="status">{{ message }}</p>
+            {% endfor %}
 
             <form id="profile-filter" class="profile-filter" method="GET" action="{{ url_for('profile') }}"
                   aria-label="Filter spending by date" aria-describedby="profile-filter-help">

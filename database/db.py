@@ -40,6 +40,20 @@ def create_user(name, email, password):
     return user_id
 
 
+def create_expense(user_id, amount, category, expense_date, description=None):
+    """Commit validated expense data and return the generated expense ID."""
+    with closing(get_db()) as connection:
+        with connection:
+            cursor = connection.execute(
+                "INSERT INTO expenses "
+                "(user_id, amount, category, date, description) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, amount, category, expense_date, description),
+            )
+            expense_id = cursor.lastrowid
+    return expense_id
+
+
 def get_user_by_email(normalized_email):
     """Return a unique case-insensitive match, or None if absent/ambiguous."""
     with closing(get_db()) as connection:

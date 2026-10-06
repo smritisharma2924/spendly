@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Add expense — Spendly{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/expense.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="expense-section" aria-labelledby="expense-title">
+    <div class="expense-container">
+        <header class="expense-header">
+            <p class="expense-eyebrow">Your spending</p>
+            <h1 id="expense-title">Add expense</h1>
+            <p>Record a purchase. Keep your spending in view.</p>
+        </header>
+        <form id="expense-form" class="expense-card" method="POST" action="{{ url_for('add_expense') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if form_error or errors %}
+            <p class="expense-alert" role="alert">{{ form_error or 'Please correct the highlighted fields.' }}</p>
+            {% endif %}
+
+            <div class="form-group">
+                <label for="amount">Amount (₹)</label>
+                <input class="form-input" type="number" id="amount" name="amount"
+                       value="{{ form_values.amount }}" min="0.01" max="999999999.99"
+                       step="0.01" inputmode="decimal" required
+                       aria-describedby="amount-help{% if errors.amount %} amount-error{% endif %}"
+                       {% if errors.amount %}aria-invalid="true"{% endif %}>
+                <p class="expense-help" id="amount-help">₹0.01 to ₹999,999,999.99, with up to two decimal places.</p>
+                {% if errors.amount %}<p class="expense-error" id="amount-error">{{ errors.amount }}</p>{% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select class="form-input" id="category" name="category" required
+                        {% if errors.category %}aria-invalid="true" aria-describedby="category-error"{% endif %}>
+                    <option value="" {% if form_values.category not in categories %}selected{% endif %}>Choose a category</option>
+                    {% for category in categories %}
+                    <option value="{{ category }}" {% if form_values.category == category %}selected{% endif %}>{{ category }}</option>
+                    {% endfor %}
+                </select>
+                {% if errors.category %}<p class="expense-error" id="category-error">{{ errors.category }}</p>{% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="date">Date</label>
+                <input class="form-input" type="date" id="date" name="date"
+                       value="{{ form_values.date }}" required
+                       {% if errors.date %}aria-invalid="true" aria-describedby="date-error"{% endif %}>
+                {% if errors.date %}<p class="expense-error" id="date-error">{{ errors.date }}</p>{% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description <span class="expense-optional">(optional)</span></label>
+                <textarea class="form-input" id="description" name="description" rows="3" maxlength="500"
+                          aria-describedby="description-help{% if errors.description %} description-error{% endif %}"
+                          {% if errors.description %}aria-invalid="true"{% endif %}>{{ form_values.description }}</textarea>
+                <p class="expense-help" id="description-help">Up to 500 characters. A short note can help you remember this expense.</p>
+                {% if errors.description %}<p class="expense-error" id="description-error">{{ errors.description }}</p>{% endif %}
+            </div>
+
+            <div class="expense-actions">
+                <button class="btn-submit" type="submit">Save expense</button>
+                <a class="expense-cancel" href="{{ url_for('profile') }}">Cancel</a>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}
