@@ -3,6 +3,7 @@ import os
 import re
 import secrets
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from flask import (
     Flask, abort, flash, g, redirect, render_template, request, session, url_for,
@@ -11,8 +12,8 @@ from werkzeug.security import check_password_hash
 
 from database import queries as profile_queries
 from database.db import (
-    DuplicateEmailError, create_user, get_user_by_email, get_user_by_id,
-    init_db, seed_db,
+    DuplicateEmailError, create_expense, create_user, get_user_by_email,
+    get_user_by_id, init_db, seed_db,
 )
 
 
@@ -339,14 +340,77 @@ def profile():
     ), 400 if filter_errors else 200
 
 
+def validate_expense_form(parameters):
+    """Return normalized expense fields and errors without accessing storage."""
+    cleaned = {}
+    errors = {}
+    amount = parameters.get("amount", "").strip()
+    if re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", amount) is None:
+        errors["amount"] = "Enter an amount with up to two decimal places."
+    else:
+        amount = Decimal(amount)
+        if not Decimal("0.01") <= amount <= Decimal("999999999.99"):
+            errors["amount"] = "Amount must be between ₹0.01 and ₹999,999,999.99."
+        else:
+            cleaned["amount"] = float(amount)
+
+    category = parameters.get("category", "")
+    if category not in CATEGORY_CLASSES:
+        errors["category"] = "Choose a category from the list."
+    else:
+        cleaned["category"] = category
+
+    expense_date = parameters.get("date", "")
+    try:
+        if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", expense_date) is None:
+            raise ValueError
+        date(*map(int, expense_date.split("-")))
+    except ValueError:
+        errors["date"] = "Enter a real date in YYYY-MM-DD format."
+    else:
+        cleaned["expense_date"] = expense_date
+
+    description = parameters.get("description", "").strip()
+    if len(description) > 500:
+        errors["description"] = "Description must be 500 characters or fewer."
+    else:
+        cleaned["description"] = description or None
+    return cleaned, errors
+
+
+@app.route("/expenses/add", methods=["GET", "POST"])
+def add_expense():
+    if g.user is None:
+        return redirect(url_for("login"))
+    form_values = {
+        "amount": "", "category": "", "date": date.today().isoformat(),
+        "description": "",
+    }
+    errors = {}
+    form_error = None
+    status = 200
+    if request.method == "POST":
+        form_values = {
+            field: request.form.get(field, "") for field in form_values
+        }
+        if not valid_csrf_token():
+            form_error = "Your form has expired. Please try again."
+        else:
+            cleaned, errors = validate_expense_form(form_values)
+            if not errors:
+                create_expense(g.user["id"], **cleaned)
+                flash("Expense added successfully.", "success")
+                return redirect(url_for("profile"))
+        status = 400
+    return render_template(
+        "add_expense.html", form_values=form_values, errors=errors,
+        form_error=form_error, categories=CATEGORY_CLASSES,
+    ), status
+
+
 # ------------------------------------------------------------------ #
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
-
-
-@app.route("/expenses/add")
-def add_expense():
-    return "Add expense — coming in Step 7"
 
 
 @app.route("/expenses/<int:id>/edit")

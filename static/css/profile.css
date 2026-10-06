@@ -112,7 +112,40 @@
 }
 
 .profile-spending { margin-top: 2rem; }
-.profile-spending-header { margin-bottom: 1.5rem; }
+.profile-spending-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.profile-add-expense {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--paper-card);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.profile-add-expense:hover { background: var(--ink); }
+.profile-add-expense:focus-visible {
+    outline: 3px solid var(--accent-2);
+    outline-offset: 3px;
+}
+
+.profile-success {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-light);
+    color: var(--accent);
+}
 
 .profile-spending-header h2 {
     margin-bottom: 0.5rem;
