@@ -354,16 +354,16 @@ def test_dashboard_sections_and_reconciled_seed_totals(client):
     }
 
     table = PageParser(response, "profile-transactions")
-    assert table.texts("th") == ["Date", "Description", "Category", "Amount"]
+    assert table.texts("th") == ["Date", "Description", "Category", "Amount", "Actions"]
     assert all(attrs["scope"] == "col" for attrs in table.attributes("th"))
     assert table.texts("caption") == [
         "Your most recent expenses (INR)",
     ]
     cells = table.texts("td")
-    rows = [cells[index:index + 4] for index in range(0, len(cells), 4)]
+    rows = [cells[index:index + 5] for index in range(0, len(cells), 5)]
     assert len(rows) == 8
-    assert rows[0][1:] == ["—", "Food", "₹25.00"]
-    assert rows[-1][1:] == ["—", "Food", "₹12.50"]
+    assert rows[0][1:4] == ["—", "Food", "₹25.00"]
+    assert rows[-1][1:4] == ["—", "Food", "₹12.50"]
     dates = [datetime.strptime(row[0], "%d %b %Y") for row in rows]
     assert dates == sorted(dates, reverse=True)
     assert len(table.attributes("time")) == len(rows)
@@ -372,7 +372,8 @@ def test_dashboard_sections_and_reconciled_seed_totals(client):
         return Decimal(value.lstrip("₹").replace(",", ""))
 
     category_sums = {}
-    for _, _, category, amount in rows:
+    for _, _, category, amount, action in rows:
+        assert action == "Edit"
         previous = category_sums.get(category, Decimal(0))
         category_sums[category] = previous + money(amount)
     breakdown = PageParser(response, "profile-categories")
@@ -511,8 +512,8 @@ def test_route_history_limit_does_not_limit_summary(client, bounds):
             )
     response = client.get("/profile", query_string=bounds)
     assert PageParser(response, "profile-summary").texts("dd") == ["₹120.00", "12", "Food"]
-    assert len(PageParser(response, "profile-transactions").texts("td")) == 40
-    assert PageParser(response, "profile-transactions").texts("td")[1::4] == [
+    assert len(PageParser(response, "profile-transactions").texts("td")) == 50
+    assert PageParser(response, "profile-transactions").texts("td")[1::5] == [
         "Expense {}".format(n) for n in range(11, 1, -1)
     ]
     hint = "at most ten matching expenses" if bounds else "at most ten expenses"
@@ -585,7 +586,7 @@ def test_profile_date_ranges(client, dated_expenses, bounds, expected, total, to
     assert PageParser(response, "profile-summary").texts("dd") == [
         "₹" + total, str(len(expected)), top,
     ]
-    assert PageParser(response, "profile-transactions").texts("td")[1::4] == expected
+    assert PageParser(response, "profile-transactions").texts("td")[1::5] == expected
     assert PageParser(response, "profile-account-fields").nodes == account
     inputs = PageParser(response, "profile-filter").attributes("input")
     assert {item["name"]: item["value"] for item in inputs} == {
@@ -856,7 +857,7 @@ def test_preset_links_filter_dashboard_and_clear_without_writes(
             total, count, "Shopping",
         ]
         assert PageParser(response, "profile-account-fields").nodes == account
-        assert PageParser(response, "profile-transactions").texts("td")[1::4] == (
+        assert PageParser(response, "profile-transactions").texts("td")[1::5] == (
             descriptions
         )
         assert sum(Decimal(re.search(r"₹([\d.]+)", row).group(1)) for row in

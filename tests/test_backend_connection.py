@@ -85,6 +85,21 @@ def test_history_limit_date_id_order_and_all_time_aggregation(user_id):
     assert queries.get_category_breakdown(user_id)[0]["amount"] == 23
 
 
+def test_history_ids_match_owned_filtered_rows(user_id):
+    first = db.create_expense(user_id, 1.25, "Food", "2040-01-01", "First")
+    second = db.create_expense(user_id, 2.5, "Bills", "2040-01-01", "Second")
+    other = db.create_user("Other", "other@example.com", "password123")
+    db.create_expense(other, 100, "Other", "2040-01-01", "Private")
+    history = queries.get_recent_transactions(
+        user_id, 20, start_date="2040-01-01", end_date="2040-01-01",
+    )
+    assert [(row["id"], row["description"], row["amount"]) for row in history] == [
+        (second, "Second", Decimal("2.50")), (first, "First", Decimal("1.25")),
+    ]
+    assert all(set(row) == {"id", "date", "description", "category", "amount"}
+               for row in history)
+
+
 @pytest.mark.parametrize("limit", [-1, True, "10", 1.5])
 def test_invalid_limits_are_rejected(user_id, limit):
     with pytest.raises(ValueError):

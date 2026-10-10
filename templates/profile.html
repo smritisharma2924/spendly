@@ -133,6 +133,7 @@
                                     <th scope="col">Description</th>
                                     <th scope="col">Category</th>
                                     <th scope="col" class="profile-amount">Amount</th>
+                                    <th scope="col">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -142,9 +143,10 @@
                                     <td>{{ transaction.description }}</td>
                                     <td><span class="profile-category profile-category-{{ transaction.category_class }}">{{ transaction.category }}</span></td>
                                     <td class="profile-amount">₹{{ '{:,.2f}'.format(transaction.amount) }}</td>
+                                    <td class="profile-actions"><a class="profile-edit" href="{{ url_for('edit_expense', id=transaction.id) }}" aria-label="Edit expense #{{ transaction.id }}">Edit</a></td>
                                 </tr>
                                 {% else %}
-                                <tr><td colspan="4" class="profile-empty">{{ 'No expenses in this date range.' if is_filtered else 'No expenses recorded yet.' }}</td></tr>
+                                <tr><td colspan="5" class="profile-empty">{{ 'No expenses in this date range.' if is_filtered else 'No expenses recorded yet.' }}</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

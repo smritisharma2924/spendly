@@ -12,10 +12,12 @@ from werkzeug.security import check_password_hash
 
 from database import queries as profile_queries
 from database.db import (
-    DuplicateEmailError, create_expense, create_user, get_user_by_email,
-    get_user_by_id, init_db, seed_db,
+    DuplicateEmailError, create_expense, create_user, get_expense_by_id,
+    get_user_by_email, get_user_by_id, init_db, seed_db, update_expense,
 )
 
+
+SQLITE_MAX_ID = 2**63 - 1
 
 CATEGORY_CLASSES = {
     "Food": "food", "Transport": "transport", "Bills": "bills",
@@ -49,7 +51,7 @@ def load_current_user():
     if "user_id" not in session:
         return
     user_id = session["user_id"]
-    if type(user_id) is not int or not 0 < user_id <= 9223372036854775807:
+    if type(user_id) is not int or not 0 < user_id <= SQLITE_MAX_ID:
         session.clear()
         return
     g.user = get_user_by_id(user_id)
@@ -214,6 +216,7 @@ def build_profile_transactions(user_id, start_date=None, end_date=None):
         transaction_date = profile_date(transaction["date"])
         description = transaction["description"]
         transactions.append({
+            "id": transaction["id"],
             "date": transaction_date.isoformat() if transaction_date else None,
             "date_label": (
                 transaction_date.strftime("%d %b %Y")
@@ -408,14 +411,45 @@ def add_expense():
     ), status
 
 
-# ------------------------------------------------------------------ #
-# Placeholder routes — students will implement these                  #
-# ------------------------------------------------------------------ #
-
-
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    if g.user is None:
+        return redirect(url_for("login"))
+    if not 0 < id <= SQLITE_MAX_ID:
+        abort(404)
+    expense = get_expense_by_id(id, g.user["id"])
+    if expense is None:
+        abort(404)
+
+    form_values = {
+        "amount": "{:.2f}".format(expense["amount"]),
+        "category": expense["category"], "date": expense["date"],
+        "description": expense["description"] or "",
+    }
+    errors = {}
+    form_error = None
+    status = 200
+    if request.method == "POST":
+        form_values = {
+            field: request.form.get(field, "") for field in form_values
+        }
+        if not valid_csrf_token():
+            form_error = "Your form has expired. Please try again."
+        else:
+            cleaned, errors = validate_expense_form(form_values)
+            if not errors:
+                if not update_expense(id, g.user["id"], **cleaned):
+                    abort(404)
+                flash("Expense updated successfully.", "success")
+                return redirect(url_for("profile"))
+        status = 400
+    return render_template(
+        "edit_expense.html", expense_id=id, form_values=form_values,
+        errors=errors, form_error=form_error, categories=CATEGORY_CLASSES,
+    ), status
+
+
+# Placeholder route — students will implement deletion in Step 9.
 
 
 @app.route("/expenses/<int:id>/delete")
