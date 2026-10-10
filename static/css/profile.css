@@ -389,6 +389,24 @@
     font-weight: 500;
 }
 
+.profile-actions { white-space: nowrap; }
+.profile-edit {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 0.5rem;
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 0.25rem;
+    border-radius: var(--radius-sm);
+}
+.profile-edit:hover { background: var(--accent-light); }
+.profile-edit:focus-visible {
+    outline: 3px solid var(--accent-2);
+    outline-offset: 3px;
+}
+
 .profile-category-food,
 .profile-category-health {
     background: var(--accent-light);

@@ -54,6 +54,29 @@ def create_expense(user_id, amount, category, expense_date, description=None):
     return expense_id
 
 
+def get_expense_by_id(expense_id, user_id):
+    """Return an owned expense, or None when no matching row exists."""
+    with closing(get_db()) as connection:
+        return connection.execute(
+            "SELECT * FROM expenses WHERE id = ? AND user_id = ?",
+            (expense_id, user_id),
+        ).fetchone()
+
+
+def update_expense(expense_id, user_id, amount, category, expense_date,
+                   description=None):
+    """Commit validated editable fields and report whether an owned row matched."""
+    with closing(get_db()) as connection:
+        with connection:
+            cursor = connection.execute(
+                "UPDATE expenses SET amount = ?, category = ?, date = ?, "
+                "description = ? WHERE id = ? AND user_id = ?",
+                (amount, category, expense_date, description, expense_id, user_id),
+            )
+            matched = cursor.rowcount == 1
+    return matched
+
+
 def get_user_by_email(normalized_email):
     """Return a unique case-insensitive match, or None if absent/ambiguous."""
     with closing(get_db()) as connection:
